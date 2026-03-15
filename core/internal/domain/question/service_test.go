@@ -20,6 +20,9 @@ type mockQuestionRepo struct {
 func (m *mockQuestionRepo) SelectQuestion(ctx context.Context, seenBy []uuid.UUID, tier shared.Tier, topic shared.Topic, mode shared.Mode, since time.Time, exclude []uuid.UUID, excludePilot bool) (*Question, error) {
 	return nil, nil
 }
+func (m *mockQuestionRepo) SelectFallbackRandom(ctx context.Context, tier shared.Tier, mode shared.Mode) (*Question, error) {
+	return nil, nil
+}
 func (m *mockQuestionRepo) GetByID(ctx context.Context, id uuid.UUID) (*Question, error) {
 	return m.question, nil
 }
@@ -65,7 +68,7 @@ func TestService_SubmitDispute_QuarantinesWhenOverThreshold(t *testing.T) {
 			IsActive:        true,
 		},
 	}
-	svc := NewService(repo, 0.08)
+	svc := NewService(repo, 0.08, nil)
 	ctx := context.Background()
 
 	_, err := svc.SubmitDispute(ctx, Dispute{QuestionID: qID})
@@ -82,7 +85,7 @@ func TestService_SubmitDispute_QuarantinesWhenOverThreshold(t *testing.T) {
 
 func TestService_SubmitDispute_QuestionNotFound(t *testing.T) {
 	repo := &mockQuestionRepo{question: nil}
-	svc := NewService(repo, 0.08)
+	svc := NewService(repo, 0.08, nil)
 	ctx := context.Background()
 
 	_, err := svc.SubmitDispute(ctx, Dispute{QuestionID: uuid.New()})

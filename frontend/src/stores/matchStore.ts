@@ -19,6 +19,8 @@ interface CrossMatchPrompt {
 interface MatchState {
   connected: boolean
   matchId?: string
+  roomCode?: string
+  isOwner: boolean
   status: 'idle' | 'queued' | 'lobby' | 'active' | 'revealing' | 'ended' | 'abandoned'
   players: string[]
   question?: QuestionSnapshot
@@ -33,6 +35,9 @@ interface MatchState {
   messages: MatchEventEnvelope[]
   setConnected: (connected: boolean) => void
   setQueued: (matchId?: string) => void
+  setMatchId: (matchId: string) => void
+  setRoomCode: (roomCode: string) => void
+  setIsOwner: (isOwner: boolean) => void
   applyEvent: (event: MatchEventEnvelope) => void
   clearPrompts: () => void
   reset: () => void
@@ -40,6 +45,7 @@ interface MatchState {
 
 export const useMatchStore = create<MatchState>((set) => ({
   connected: false,
+  isOwner: false,
   status: 'idle',
   players: [],
   standings: [],
@@ -48,6 +54,9 @@ export const useMatchStore = create<MatchState>((set) => ({
   messages: [],
   setConnected: (connected) => set({ connected }),
   setQueued: (matchId) => set({ status: 'queued', matchId }),
+  setMatchId: (matchId) => set({ matchId }),
+  setRoomCode: (roomCode) => set({ roomCode }),
+  setIsOwner: (isOwner) => set({ isOwner }),
   applyEvent: (event) =>
     set((state) => {
       const nextMessages = [...state.messages, event].slice(-40)
@@ -162,6 +171,8 @@ export const useMatchStore = create<MatchState>((set) => ({
   reset: () => set({
     connected: false,
     matchId: undefined,
+    roomCode: undefined,
+    isOwner: false,
     status: 'idle',
     players: [],
     question: undefined,

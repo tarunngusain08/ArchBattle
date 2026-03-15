@@ -11,7 +11,7 @@ type Config struct {
 	HTTPPort             string
 	RedisURL             string
 	DatabaseURL          string
-	GeminiAPIKey         string
+	OpenAIAPIKey         string
 	InternalSecret       string
 	AllowedOrigins       []string
 	FreeTutorLimitPerDay int
@@ -23,7 +23,7 @@ func Load() Config {
 		HTTPPort:             getEnv("AI_HTTP_PORT", "8081"),
 		RedisURL:             getEnv("REDIS_URL", "redis://localhost:6379/0"),
 		DatabaseURL:          getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/archbattle?sslmode=disable"),
-		GeminiAPIKey:         os.Getenv("GEMINI_API_KEY"),
+		OpenAIAPIKey:         os.Getenv("OPENAI_API_KEY"),
 		InternalSecret:       os.Getenv("AI_INTERNAL_SECRET"),
 		AllowedOrigins:       splitCSV(getEnv("ALLOWED_ORIGINS", "http://localhost:5173")),
 		FreeTutorLimitPerDay: getEnvInt("FREE_TUTOR_LIMIT_PER_DAY", 3),

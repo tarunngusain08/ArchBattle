@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	stdhttp "net/http"
 	"strings"
 	"time"
 
 	domainmatch "github.com/radhakrishna/archbattle/core/internal/domain/match"
 	domainquestion "github.com/radhakrishna/archbattle/core/internal/domain/question"
+	"github.com/radhakrishna/archbattle/core/internal/domain/shared"
 )
 
 // draftQuestionPayload is the wire format sent to the AI service.
@@ -46,6 +48,87 @@ func (c *Client) DraftQuestion(ctx context.Context, req domainquestion.DraftRequ
 		return nil, err
 	}
 	return response, nil
+}
+
+type aiDraftResponse struct {
+	Scenario       string   `json:"scenario"`
+	Prompt         string   `json:"prompt"`
+	Options        []string `json:"options"`
+	CorrectAnswers []int    `json:"correctAnswers"`
+	Rationale      string   `json:"rationale"`
+}
+
+// GenerateQuestion implements domainquestion.AIQuestionGenerator.
+func (c *Client) GenerateQuestion(ctx context.Context, topic, tier, mode string) (*domainquestion.Question, error) {
+	resp, err := c.DraftQuestion(ctx, domainquestion.DraftRequest{Topic: topic, Tier: tier, Mode: mode, Seed: ""})
+	if err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(resp)
+	if err != nil {
+		return nil, fmt.Errorf("marshal draft response: %w", err)
+	}
+	var d aiDraftResponse
+	if err := json.Unmarshal(data, &d); err != nil {
+		return nil, fmt.Errorf("parse draft response: %w", err)
+	}
+	if err := validateAIDraft(&d); err != nil {
+		return nil, err
+	}
+	tierParsed, err := shared.ParseTier(tier)
+	if err != nil {
+		tierParsed = shared.TierJunior
+	}
+	topicParsed := shared.NormalizeTopic(topic)
+	modeParsed := shared.Mode(mode)
+	if modeParsed != shared.ModeFFF {
+		modeParsed = shared.ModeFFF
+	}
+	prompt := strings.TrimSpace(d.Scenario)
+	if d.Prompt != "" {
+		if prompt != "" {
+			prompt += "\n\n"
+		}
+		prompt += strings.TrimSpace(d.Prompt)
+	}
+	return &domainquestion.Question{
+		Prompt:         prompt,
+		Options:        d.Options,
+		CorrectAnswers: d.CorrectAnswers,
+		Rationale:      d.Rationale,
+		Topic:          topicParsed,
+		DifficultyTier: tierParsed,
+		Mode:           modeParsed,
+	}, nil
+}
+
+func validateAIDraft(d *aiDraftResponse) error {
+	if len(d.Scenario) < 20 {
+		return fmt.Errorf("scenario too short (min 20 chars)")
+	}
+	if len(d.Prompt) < 10 {
+		return fmt.Errorf("prompt too short (min 10 chars)")
+	}
+	if len(d.Options) != 4 {
+		return fmt.Errorf("options must have exactly 4 elements, got %d", len(d.Options))
+	}
+	for i, o := range d.Options {
+		if strings.TrimSpace(o) == "" {
+			return fmt.Errorf("option %d is empty", i)
+		}
+	}
+	if len(d.CorrectAnswers) < 1 {
+		return fmt.Errorf("correctAnswers must have at least 1 element")
+	}
+	for _, a := range d.CorrectAnswers {
+		if a < 0 || a > 3 {
+			return fmt.Errorf("correctAnswers index %d out of bounds [0,3]", a)
+		}
+	}
+	if strings.TrimSpace(d.Rationale) == "" {
+		return fmt.Errorf("rationale is empty")
+	}
+	return nil
 }
 
 func (c *Client) Tutor(ctx context.Context, body map[string]any) (map[string]any, error) {
@@ -102,7 +185,8 @@ func (c *Client) postJSON(ctx context.Context, path string, request any, respons
 	}
 	defer res.Body.Close()
 	if res.StatusCode >= 300 {
-		return fmt.Errorf("ai service returned %s", res.Status)
+		body, _ := io.ReadAll(res.Body)
+		return fmt.Errorf("ai service returned %s: %s", res.Status, string(body))
 	}
 	if response == nil {
 		return nil

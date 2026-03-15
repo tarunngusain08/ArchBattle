@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
+
 	domaindaily "github.com/radhakrishna/archbattle/core/internal/domain/daily"
 )
 
@@ -60,7 +62,13 @@ func (h *DailyHandler) Submit(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		}
 		date = parsed
 	}
-	result, err := h.service.Submit(r.Context(), domaindaily.Submission{UserID: userID, ChallengeDate: date, Answers: req.Answers, TotalMillis: req.TotalMillis})
+	validAnswers := make(map[string][]int)
+	for k, v := range req.Answers {
+		if _, err := uuid.Parse(k); err == nil {
+			validAnswers[k] = v
+		}
+	}
+	result, err := h.service.Submit(r.Context(), domaindaily.Submission{UserID: userID, ChallengeDate: date, Answers: validAnswers, TotalMillis: req.TotalMillis})
 	if err != nil {
 		writeJSON(w, stdhttp.StatusBadRequest, map[string]string{"error": err.Error()})
 		return

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-import type { MatchEventEnvelope, MatchStanding, QuestionSnapshot } from '../types'
+import type { MatchEventEnvelope, MatchStanding, QuestionSnapshot, RoundResult } from '../types'
 
 interface PlayerScore {
   userId: string
@@ -21,12 +21,13 @@ interface MatchState {
   matchId?: string
   roomCode?: string
   isOwner: boolean
-  status: 'idle' | 'queued' | 'lobby' | 'active' | 'revealing' | 'ended' | 'abandoned'
+  status: 'idle' | 'queued' | 'lobby' | 'active' | 'revealing' | 'leaderboard' | 'ended' | 'abandoned'
   players: string[]
   question?: QuestionSnapshot
   reveal?: { rationale?: string; correctAnswers?: number[]; playerChoices?: Record<string, number[]> }
   standings: MatchStanding[]
   scores: PlayerScore[]
+  roundResults?: RoundResult[]
   learningSummary?: Record<string, unknown>
   soloFallbackOffer?: SoloFallbackOffer
   crossMatchPrompt?: CrossMatchPrompt
@@ -97,7 +98,21 @@ export const useMatchStore = create<MatchState>((set) => ({
             status: 'active',
             question: (event.payload?.question as QuestionSnapshot | undefined) ?? state.question,
             reveal: undefined,
+            roundResults: undefined,
             lobbyCountdown: undefined,
+            messages: nextMessages,
+          }
+        case 'round_leaderboard':
+          return {
+            ...state,
+            status: 'leaderboard',
+            standings: (event.payload?.standings as MatchStanding[] | undefined) ?? state.standings,
+            roundResults: (event.payload?.round_results as RoundResult[] | undefined) ?? undefined,
+            reveal: {
+              rationale: event.payload?.rationale as string | undefined,
+              correctAnswers: event.payload?.correct_answers as number[] | undefined,
+              playerChoices: event.payload?.player_choices as Record<string, number[]> | undefined,
+            },
             messages: nextMessages,
           }
         case 'question_reveal':
@@ -179,6 +194,7 @@ export const useMatchStore = create<MatchState>((set) => ({
     reveal: undefined,
     standings: [],
     scores: [],
+    roundResults: undefined,
     learningSummary: undefined,
     soloFallbackOffer: undefined,
     crossMatchPrompt: undefined,

@@ -14,7 +14,7 @@ import (
 	domainshared "github.com/radhakrishna/archbattle/ai-service/internal/domain/shared"
 )
 
-const baseURL = "https://api.openai.com/v1/chat/completions"
+const baseURL = "https://openrouter.ai/api/v1/chat/completions"
 
 // Client implements shared.LLMClient using OpenAI's Chat Completions API.
 type Client struct {
@@ -45,10 +45,10 @@ type openAIResponse struct {
 	} `json:"usage"`
 }
 
-// NewClient creates an OpenAI client. If apiKey is empty, uses OPENAI_API_KEY env.
+// NewClient creates an OpenAI-compatible client for OpenRouter. If apiKey is empty, uses OPENROUTER_API_KEY env.
 func NewClient(apiKey string) *Client {
 	if apiKey == "" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
+		apiKey = os.Getenv("OPENROUTER_API_KEY")
 	}
 	return &Client{apiKey: apiKey, http: &stdhttp.Client{Timeout: 45 * time.Second}}
 }
@@ -56,7 +56,7 @@ func NewClient(apiKey string) *Client {
 // Complete implements shared.LLMClient.
 func (c *Client) Complete(ctx context.Context, req domainshared.CompletionRequest) (string, int, error) {
 	if strings.TrimSpace(c.apiKey) == "" {
-		return "", 0, fmt.Errorf("OPENAI_API_KEY is not configured")
+		return "", 0, fmt.Errorf("OPENROUTER_API_KEY is not configured")
 	}
 
 	messages := make([]openAIMessage, 0, len(req.Messages)+1)

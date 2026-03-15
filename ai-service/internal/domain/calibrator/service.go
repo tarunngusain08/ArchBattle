@@ -18,7 +18,7 @@ func NewService(llm shared.LLMClient) *Service {
 }
 
 func (s *Service) Calibrate(ctx context.Context, req Request) (*Response, error) {
-	text, _, err := s.llm.Complete(ctx, shared.CompletionRequest{Model: "gpt-4o-mini", SystemPrompt: "Return exactly: <difficulty>|<reasoning> where difficulty is 1-5.", Messages: []shared.Message{{Role: "user", Content: req.Prompt}}, Temperature: 0.1, MaxTokens: 100})
+	text, _, err := s.llm.Complete(ctx, shared.CompletionRequest{Model: "openai/gpt-4o-mini", SystemPrompt: "Return exactly: <difficulty>|<reasoning> where difficulty is 1-5.", Messages: []shared.Message{{Role: "user", Content: req.Prompt}}, Temperature: 0.1, MaxTokens: 100})
 	if err != nil {
 		return nil, err
 	}

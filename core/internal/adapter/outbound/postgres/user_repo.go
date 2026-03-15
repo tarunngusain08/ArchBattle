@@ -2,11 +2,13 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	domainauth "github.com/radhakrishna/archbattle/core/internal/domain/auth"
@@ -35,6 +37,45 @@ func (r *UserRepo) Create(ctx context.Context, user *domainauth.User) error {
 		return fmt.Errorf("insert user: %w", err)
 	}
 	return nil
+}
+
+func (r *UserRepo) FindByUsername(ctx context.Context, username string) (*domainauth.User, error) {
+	row := r.pool.QueryRow(ctx, `
+        SELECT id, username, email, password_hash, role, tier, junior_elo, senior_elo, staff_elo, matches_played, current_streak, longest_streak, last_daily_date, created_at
+        FROM users WHERE username = $1
+    `, username)
+	return scanUser(row)
+}
+
+func (r *UserRepo) UpsertByUsername(ctx context.Context, username string) (*domainauth.User, error) {
+	existing, err := r.FindByUsername(ctx, username)
+	if err == nil {
+		return existing, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("find user: %w", err)
+	}
+	user := &domainauth.User{
+		ID:           uuid.New(),
+		Username:     username,
+		Email:        username + "@local",
+		PasswordHash: "dummy",
+		Role:         domainauth.RoleUser,
+		Tier:         shared.TierJunior,
+		JuniorELO:    1000,
+		SeniorELO:    1000,
+		StaffELO:     1000,
+		CreatedAt:    time.Now().UTC(),
+	}
+	err = r.Create(ctx, user)
+	if err != nil {
+		existing, findErr := r.FindByUsername(ctx, username)
+		if findErr != nil {
+			return nil, fmt.Errorf("upsert user: %w", err)
+		}
+		return existing, nil
+	}
+	return user, nil
 }
 
 func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*domainauth.User, error) {

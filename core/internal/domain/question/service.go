@@ -53,6 +53,51 @@ func (s *Service) SelectQuestion(ctx context.Context, seenBy []uuid.UUID, tier s
 	return toSnapshot(question), nil
 }
 
+func (s *Service) SelectQuestions(ctx context.Context, count int, seenBy []uuid.UUID, tier shared.Tier, topic shared.Topic, mode shared.Mode, exclude []uuid.UUID, excludePilot bool) ([]*shared.QuestionSnapshot, error) {
+	result := make([]*shared.QuestionSnapshot, 0, count)
+	aiQuestionIDs := make([]uuid.UUID, 0, count)
+
+	if s.aiGen != nil {
+		aiCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		aiQuestions, err := s.aiGen.GenerateQuestions(aiCtx, string(topic), string(tier), string(mode), count)
+		if err != nil {
+			slog.Warn("ai bulk question generation failed, using fallback", "topic", topic, "tier", tier, "error", err)
+		} else {
+			for _, q := range aiQuestions {
+				q.ID = uuid.New()
+				q.Status = "live"
+				q.IsActive = true
+				q.CreatedAt = time.Now().UTC()
+				if err := s.repo.Create(ctx, q); err != nil {
+					slog.Warn("persist ai question failed, skipping", "error", err)
+					continue
+				}
+				result = append(result, toSnapshot(q))
+				aiQuestionIDs = append(aiQuestionIDs, q.ID)
+			}
+		}
+	}
+
+	needed := count - len(result)
+	if needed > 0 {
+		excludeIDs := append([]uuid.UUID(nil), exclude...)
+		excludeIDs = append(excludeIDs, aiQuestionIDs...)
+		fallbacks, err := s.repo.SelectFallbackRandomN(ctx, tier, mode, needed, excludeIDs)
+		if err != nil {
+			return nil, fmt.Errorf("select fallback questions: %w", err)
+		}
+		for _, q := range fallbacks {
+			result = append(result, toSnapshot(q))
+		}
+	}
+
+	if len(result) == 0 {
+		return nil, fmt.Errorf("no questions available")
+	}
+	return result, nil
+}
+
 func (s *Service) IncrementPilotAttempt(ctx context.Context, id uuid.UUID) error {
 	q, err := s.repo.GetByID(ctx, id)
 	if err != nil || q == nil || q.Status != "pilot" {

@@ -39,6 +39,15 @@ func (m *mockQueueStore) Dequeue(_ context.Context, _, _ string, userID uuid.UUI
 	m.dequeued[userID] = struct{}{}
 	return nil
 }
+func (m *mockQueueStore) GetEntry(_ context.Context, userID uuid.UUID) (*QueueEntry, error) {
+	for i := range m.entries {
+		if m.entries[i].UserID == userID {
+			e := m.entries[i]
+			return &e, nil
+		}
+	}
+	return nil, nil
+}
 func (m *mockQueueStore) FindCandidates(_ context.Context, tier, topic string, minELO, maxELO int) ([]QueueEntry, error) {
 	var result []QueueEntry
 	for _, e := range m.entries {
@@ -109,7 +118,7 @@ func TestRunScanOnce_FormsPair(t *testing.T) {
 	queue := newMockQueueStore(entries)
 	factory := &mockMatchFactory{}
 	notifier := &mockNotifier{}
-	svc := NewService(queue, factory, notifier)
+	svc := NewService(queue, factory, notifier, nil, nil)
 
 	if err := svc.RunScanOnce(context.Background()); err != nil {
 		t.Fatalf("RunScanOnce failed: %v", err)
@@ -129,7 +138,7 @@ func TestRunScanOnce_NoPairIfOnlyOnePlayer(t *testing.T) {
 	queue := newMockQueueStore(entries)
 	factory := &mockMatchFactory{}
 	notifier := &mockNotifier{}
-	svc := NewService(queue, factory, notifier)
+	svc := NewService(queue, factory, notifier, nil, nil)
 
 	if err := svc.RunScanOnce(context.Background()); err != nil {
 		t.Fatalf("RunScanOnce failed: %v", err)
@@ -148,7 +157,7 @@ func TestRunScanOnce_ELORangeFilters(t *testing.T) {
 	queue := newMockQueueStore(entries)
 	factory := &mockMatchFactory{}
 	notifier := &mockNotifier{}
-	svc := NewService(queue, factory, notifier)
+	svc := NewService(queue, factory, notifier, nil, nil)
 
 	if err := svc.RunScanOnce(context.Background()); err != nil {
 		t.Fatalf("RunScanOnce failed: %v", err)

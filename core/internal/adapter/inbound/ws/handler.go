@@ -67,8 +67,12 @@ func (g *Gateway) readPump(ctx context.Context, c *client) {
 			c.send <- mustJSON(outboundEnvelope{Type: "error", Payload: map[string]any{"message": "rate limit exceeded"}, CreatedAt: time.Now().UTC()})
 			continue
 		}
+		start := time.Now()
 		if err := g.handleMessage(ctx, c, envelope); err != nil {
 			c.send <- mustJSON(outboundEnvelope{Type: "error", Payload: map[string]any{"message": err.Error()}, CreatedAt: time.Now().UTC()})
+		}
+		if g.metrics != nil {
+			g.metrics.WSMessageLatencyMillis.Observe(float64(time.Since(start).Milliseconds()))
 		}
 	}
 }
@@ -162,6 +166,7 @@ func (g *Gateway) handleJoinMatch(ctx context.Context, c *client, raw json.RawMe
 }
 
 func (g *Gateway) handleAnswerSubmit(ctx context.Context, c *client, raw json.RawMessage) error {
+	start := time.Now()
 	var payload answerPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return err
@@ -179,6 +184,9 @@ func (g *Gateway) handleAnswerSubmit(ctx context.Context, c *client, raw json.Ra
 		return err
 	}
 	_, _, err = g.matchService.SubmitAnswer(ctx, domainmatch.SubmitAnswerRequest{MatchID: matchID, UserID: c.userID, QuestionID: questionID, Choices: payload.Choices, ServerReceivedAt: time.Now().UTC().UnixNano(), ElapsedSeconds: payload.ElapsedSeconds}, question.GetCorrectAnswers())
+	if g.metrics != nil {
+		g.metrics.AnswerSubmitLatencyMillis.Observe(float64(time.Since(start).Milliseconds()))
+	}
 	return err
 }
 

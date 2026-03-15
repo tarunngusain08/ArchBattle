@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_freeze_available INT NOT NULL DEFAULT 0;

@@ -12,11 +12,11 @@ import (
 )
 
 const (
-	lobbyCountdownSeconds  = 10
-	questionTimerSeconds   = 75
-	revealTimerSeconds     = 10
-	pollInterval           = 500 * time.Millisecond
-	abandonedCheckInterval = 2 * time.Second
+	lobbyCountdownSeconds    = 10
+	questionTimerSeconds     = 60
+	leaderboardDisplaySeconds = 6
+	pollInterval             = 500 * time.Millisecond
+	abandonedCheckInterval   = 2 * time.Second
 )
 
 // TransitionErrorRecorder records invalid match state transitions for observability.
@@ -173,12 +173,107 @@ func (s *Service) StartNextQuestion(ctx context.Context, matchID uuid.UUID, excl
 		return nil, fmt.Errorf("set current question: %w", err)
 	}
 
-	if err := s.publishAndBroadcast(ctx, matchID, &MatchEvent{Type: "question_broadcast", MatchID: matchID, CreatedAt: state.UpdatedAt, Payload: map[string]any{"question": question.ToClientSnapshot(), "timer_s": 75, "index": state.QuestionIndex}}); err != nil {
+	if err := s.publishAndBroadcast(ctx, matchID, &MatchEvent{Type: "question_broadcast", MatchID: matchID, CreatedAt: state.UpdatedAt, Payload: map[string]any{"question": question.ToClientSnapshot(), "timer_s": questionTimerSeconds, "index": state.QuestionIndex}}); err != nil {
 		return nil, err
 	}
 	return question, nil
 }
 
+// RecordChoice stores the player's latest answer selection. Called on every
+// answer_submit WS message. The choice is overwritten each time; only the final
+// selection at timeout is scored.
+func (s *Service) RecordChoice(ctx context.Context, req RecordChoiceRequest) error {
+	if err := s.answers.StoreLatestChoice(ctx, req.MatchID, req.QuestionID, req.UserID, req.Choices); err != nil {
+		return fmt.Errorf("store latest choice: %w", err)
+	}
+	seq, err := s.answers.IncrementSeq(ctx, req.MatchID, req.QuestionID)
+	if err != nil {
+		return fmt.Errorf("increment answer sequence: %w", err)
+	}
+	orderingScore := BuildOrderingScore(req.ServerReceivedAt, seq)
+	_, _ = s.answers.RecordFirstAnswerTime(ctx, req.MatchID, req.QuestionID, req.UserID, orderingScore)
+	return nil
+}
+
+// ScoreRound evaluates all final answers after the question timer expires.
+// It reads the latest choices from Redis, scores them, persists submissions,
+// and returns per-player round results plus cumulative standings.
+func (s *Service) ScoreRound(ctx context.Context, matchID uuid.UUID, question *shared.QuestionSnapshot) ([]RoundResult, []PlayerStanding, error) {
+	choices, err := s.answers.GetAllLatestChoices(ctx, matchID, question.ID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get final choices: %w", err)
+	}
+
+	players, err := s.matches.GetPlayers(ctx, matchID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get players: %w", err)
+	}
+
+	totalAnswered, _ := s.answers.GetTotalAnswered(ctx, matchID, question.ID)
+
+	roundResults := make([]RoundResult, 0, len(players))
+	for _, player := range players {
+		playerChoices, answered := choices[player.UserID]
+		correct := answered && IsCorrectAnswer(playerChoices, question.CorrectAnswers)
+
+		var rank int64
+		if answered {
+			r, err := s.answers.GetRank(ctx, matchID, question.ID, player.UserID)
+			if err == nil {
+				rank = r
+			}
+		}
+
+		// elapsedSeconds=0: the late-answer bonus (>45s) does not apply in
+		// deferred scoring; speed advantage is captured entirely by rank.
+		points := CalculatePoints(rank, totalAnswered, correct, 0)
+
+		submission := &AnswerSubmission{
+			ID:               uuid.New(),
+			MatchID:          matchID,
+			UserID:           player.UserID,
+			QuestionID:       question.ID,
+			ChosenOptions:    append([]int(nil), playerChoices...),
+			IsCorrect:        correct,
+			PointsAwarded:    points,
+			ServerReceivedAt: time.Now().UTC().UnixNano(),
+			ElapsedSeconds:   questionTimerSeconds,
+		}
+		if err := s.submissions.SaveSubmission(ctx, submission); err != nil {
+			return nil, nil, fmt.Errorf("save submission for %s: %w", player.UserID, err)
+		}
+
+		roundResults = append(roundResults, RoundResult{
+			UserID:        player.UserID,
+			Username:      player.Username,
+			PointsAwarded: points,
+			IsCorrect:     correct,
+		})
+	}
+
+	allSubmissions, err := s.submissions.ListByMatch(ctx, matchID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list submissions: %w", err)
+	}
+	cumulativeScores := map[uuid.UUID]int{}
+	for _, sub := range allSubmissions {
+		cumulativeScores[sub.UserID] += sub.PointsAwarded
+	}
+
+	standings := make([]PlayerStanding, 0, len(players))
+	for _, player := range players {
+		standings = append(standings, PlayerStanding{
+			UserID:       player.UserID,
+			Username:     player.Username,
+			Score:        cumulativeScores[player.UserID],
+			Disconnected: player.Disconnected,
+		})
+	}
+
+	return roundResults, standings, nil
+}
+
+// SubmitAnswer is kept for backward compatibility (e.g. daily challenges).
 func (s *Service) SubmitAnswer(ctx context.Context, req SubmitAnswerRequest, correctAnswers []int) (*AnswerSubmission, int64, error) {
 	seq, err := s.answers.IncrementSeq(ctx, req.MatchID, req.QuestionID)
 	if err != nil {
@@ -193,8 +288,6 @@ func (s *Service) SubmitAnswer(ctx context.Context, req SubmitAnswerRequest, cor
 		return nil, seq, fmt.Errorf("duplicate submission ignored")
 	}
 
-	// Get actual rank from sorted set after recording to avoid race where concurrent
-	// submissions both see the same totalBefore and get the same rank.
 	rank, err := s.answers.GetRank(ctx, req.MatchID, req.QuestionID, req.UserID)
 	if err != nil {
 		return nil, 0, fmt.Errorf("get answer rank: %w", err)
@@ -322,12 +415,13 @@ func (s *Service) publishAndBroadcast(ctx context.Context, matchID uuid.UUID, ev
 }
 
 // RunMatchLoop is the server-side game orchestrator. It drives the state machine:
-// LOBBY (countdown) -> ACTIVE (question + 75s timer) -> REVEALING (10s) -> [repeat] -> SCORING -> ENDED
-// It should be launched as a goroutine after CreateMatch returns.
+// LOBBY (countdown) -> ACTIVE (question + 60s timer) -> LEADERBOARD (6s) -> [repeat] -> SCORING -> ENDED
+// Players can change their answer freely during the 60s window. Only the final
+// selection is scored after the timer expires. A round leaderboard is displayed
+// for 6 seconds between questions.
 func (s *Service) RunMatchLoop(ctx context.Context, matchID uuid.UUID, expectedPlayers int) {
 	logger := slog.Default().With("match_id", matchID)
 
-	// Phase: lobby countdown - broadcast ticks until countdown reaches 0
 	for tick := lobbyCountdownSeconds; tick >= 0; tick-- {
 		select {
 		case <-ctx.Done():
@@ -347,7 +441,6 @@ func (s *Service) RunMatchLoop(ctx context.Context, matchID uuid.UUID, expectedP
 		time.Sleep(1 * time.Second)
 	}
 
-	// Update Postgres status to active
 	if err := s.matches.UpdateStatus(ctx, matchID, StateActive); err != nil {
 		logger.Error("update match status to active", "error", err)
 	}
@@ -356,7 +449,6 @@ func (s *Service) RunMatchLoop(ctx context.Context, matchID uuid.UUID, expectedP
 	pilotSelected := false
 
 	for qIdx := 0; qIdx < shared.QuestionsPerMatch; qIdx++ {
-		// Check context before starting each question
 		select {
 		case <-ctx.Done():
 			s.abandonMatch(context.Background(), matchID)
@@ -364,13 +456,11 @@ func (s *Service) RunMatchLoop(ctx context.Context, matchID uuid.UUID, expectedP
 		default:
 		}
 
-		// Check if all players abandoned
 		if s.allPlayersDisconnected(ctx, matchID, expectedPlayers) {
 			s.abandonMatch(context.Background(), matchID)
 			return
 		}
 
-		// Start the question (exclude pilot if we already have one in this match)
 		question, err := s.StartNextQuestion(ctx, matchID, seenQuestions, pilotSelected)
 		if err != nil {
 			logger.Error("start next question", "error", err, "q_index", qIdx)
@@ -382,39 +472,69 @@ func (s *Service) RunMatchLoop(ctx context.Context, matchID uuid.UUID, expectedP
 			pilotSelected = true
 		}
 
-		// Wait for all answers OR 75s timer
-		answered := s.waitForAllAnswers(ctx, matchID, question.ID, expectedPlayers, questionTimerSeconds*time.Second)
-		if !answered {
-			logger.Info("question timer expired", "q_index", qIdx)
-		}
-
-		// Transition to REVEALING - fetch all choices for the reveal event
-		choicesMap := map[string][]int{}
-		// Reveal question (broadcast correct answers and rationale)
-		if err := s.RevealQuestion(ctx, matchID, question, choicesMap); err != nil {
-			logger.Error("reveal question", "error", err, "q_index", qIdx)
-		}
-
-		// Increment pilot attempt after submission on pilot questions
-		if question.Status == "pilot" {
-			_ = s.questions.IncrementPilotAttempt(ctx, question.ID)
-		}
-
-		// Wait reveal timer
+		// Always wait the full 60 seconds so players can change answers.
 		select {
-		case <-time.After(revealTimerSeconds * time.Second):
+		case <-time.After(questionTimerSeconds * time.Second):
 		case <-ctx.Done():
 			s.abandonMatch(context.Background(), matchID)
 			return
 		}
 
-		// After last question, proceed to scoring instead of next question
+		// Score the round using final answers
+		roundResults, standings, err := s.ScoreRound(ctx, matchID, question)
+		if err != nil {
+			logger.Error("score round", "error", err, "q_index", qIdx)
+			s.abandonMatch(context.Background(), matchID)
+			return
+		}
+
+		// Transition to leaderboard state
+		state, err := s.stateStore.GetMatchState(ctx, matchID)
+		if err == nil && state != nil {
+			state.State = StateLeaderboard
+			state.UpdatedAt = time.Now().UTC()
+			_ = s.stateStore.SetMatchState(ctx, matchID, state)
+		}
+
+		// Build player choices map for the leaderboard payload
+		finalChoices, _ := s.answers.GetAllLatestChoices(ctx, matchID, question.ID)
+		playerChoicesPayload := map[string][]int{}
+		for uid, c := range finalChoices {
+			playerChoicesPayload[uid.String()] = c
+		}
+
+		_ = s.publishAndBroadcast(ctx, matchID, &MatchEvent{
+			Type:      "round_leaderboard",
+			MatchID:   matchID,
+			CreatedAt: time.Now().UTC(),
+			Payload: map[string]any{
+				"standings":      standings,
+				"round_results":  roundResults,
+				"correct_answers": question.CorrectAnswers,
+				"rationale":      question.Rationale,
+				"question_id":    question.ID,
+				"player_choices": playerChoicesPayload,
+				"timer_s":        leaderboardDisplaySeconds,
+			},
+		})
+
+		if question.Status == "pilot" {
+			_ = s.questions.IncrementPilotAttempt(ctx, question.ID)
+		}
+
+		// Display leaderboard for 6 seconds
+		select {
+		case <-time.After(leaderboardDisplaySeconds * time.Second):
+		case <-ctx.Done():
+			s.abandonMatch(context.Background(), matchID)
+			return
+		}
+
 		if qIdx == shared.QuestionsPerMatch-1 {
 			break
 		}
 	}
 
-	// Update status to scoring, then run CompleteMatch
 	if err := s.matches.UpdateStatus(ctx, matchID, StateScoring); err != nil {
 		logger.Error("update match status to scoring", "error", err)
 	}
@@ -438,7 +558,6 @@ func (s *Service) RunMatchLoop(ctx context.Context, matchID uuid.UUID, expectedP
 			},
 		})
 	}
-	// match_end already broadcast inside CompleteMatch; log completion
 	logger.Info("match completed", "standings_count", len(standings))
 }
 

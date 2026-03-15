@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { Button } from '../components/common/Button'
 import { QuestionCard } from '../components/match/QuestionCard'
+import { RoundLeaderboard } from '../components/match/RoundLeaderboard'
 import { ScoreStrip } from '../components/match/ScoreStrip'
 import { useMatch } from '../hooks/useMatch'
 import { useSocketStore } from '../stores/socketStore'
@@ -14,33 +15,32 @@ export function BattlePage() {
   const send = useSocketStore((state) => state.send)
   const status = useMatchStore((state) => state.status)
 
-  // Track when the current question started (server event createdAt) to compute elapsedSeconds.
   const questionStartRef = useRef<number>(0)
-  const submittedRef = useRef(false)
 
-  // Update the question start timestamp whenever a new question_broadcast arrives.
   const messages = useMatchStore((state) => state.messages)
   const lastBroadcastAt = messages.filter((m) => m.type === 'question_broadcast').at(-1)?.createdAt
   useEffect(() => {
     if (lastBroadcastAt) {
       questionStartRef.current = new Date(lastBroadcastAt).getTime()
-      submittedRef.current = false
     }
   }, [lastBroadcastAt])
 
-  // Navigate to /reveal when the server sends question_reveal (status becomes 'revealing').
-  useEffect(() => {
-    if (status === 'revealing') {
-      navigate('/reveal')
-    }
-  }, [status, navigate])
-
-  // Navigate to /results when match ends.
   useEffect(() => {
     if (status === 'ended' || status === 'abandoned') {
       navigate('/results')
     }
   }, [status, navigate])
+
+  if (status === 'leaderboard') {
+    return (
+      <RoundLeaderboard
+        standings={match.standings}
+        roundResults={match.roundResults}
+        correctAnswers={match.reveal?.correctAnswers}
+        rationale={match.reveal?.rationale}
+      />
+    )
+  }
 
   if (!match.question) {
     return (
@@ -71,13 +71,11 @@ export function BattlePage() {
 
   return (
     <div className="space-y-6">
-      <ScoreStrip standings={match.standings} />
+      {match.standings.length > 0 ? <ScoreStrip standings={match.standings} /> : null}
       <QuestionCard
         question={match.question}
         onChoose={(choice) => {
-          if (submittedRef.current || !match.matchId) return
-          submittedRef.current = true
-          // Compute elapsed time from server question broadcast, not client clock delta.
+          if (!match.matchId) return
           const startMs = questionStartRef.current || performance.timeOrigin
           const elapsedSeconds = Math.round((Date.now() - startMs) / 1000)
           send('answer_submit', {
@@ -86,7 +84,6 @@ export function BattlePage() {
             choices: [choice],
             elapsedSeconds,
           })
-          // Do NOT navigate here. Navigation is driven by the server's question_reveal event.
         }}
       />
     </div>

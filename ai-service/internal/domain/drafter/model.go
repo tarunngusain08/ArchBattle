@@ -8,6 +8,7 @@ type Request struct {
 }
 
 type Draft struct {
+	Scenario       string   `json:"scenario"`
 	Prompt         string   `json:"prompt"`
 	Options        []string `json:"options"`
 	CorrectAnswers []int    `json:"correctAnswers"`

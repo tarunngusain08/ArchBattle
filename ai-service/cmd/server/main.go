@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	inboundhttp "github.com/radhakrishna/archbattle/ai-service/internal/adapter/inbound/http"
-	"github.com/radhakrishna/archbattle/ai-service/internal/adapter/outbound/gemini"
+	"github.com/radhakrishna/archbattle/ai-service/internal/adapter/outbound/openai"
 	postgresadapter "github.com/radhakrishna/archbattle/ai-service/internal/adapter/outbound/postgres"
 	redisadapter "github.com/radhakrishna/archbattle/ai-service/internal/adapter/outbound/redis"
 	"github.com/radhakrishna/archbattle/ai-service/internal/config"
@@ -43,7 +43,7 @@ func main() {
 	}
 	defer pgPool.Close()
 
-	llm := gemini.NewClient(cfg.GeminiAPIKey)
+	llm := openai.NewClient(cfg.OpenAIAPIKey)
 	limiter := redisadapter.NewRateLimiter(redisClient)
 	sessionLogger := postgresadapter.NewSessionLogger(pgPool)
 

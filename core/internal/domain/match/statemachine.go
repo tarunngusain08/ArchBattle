@@ -11,10 +11,15 @@ var validTransitions = map[MatchState]map[MatchState]struct{}{
 		StateAbandoned: {},
 	},
 	StateActive: {
-		StateRevealing: {},
-		StateAbandoned: {},
+		StateRevealing:   {},
+		StateLeaderboard: {},
+		StateAbandoned:   {},
 	},
 	StateRevealing: {
+		StateActive:  {},
+		StateScoring: {},
+	},
+	StateLeaderboard: {
 		StateActive:  {},
 		StateScoring: {},
 	},

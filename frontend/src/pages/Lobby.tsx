@@ -18,7 +18,7 @@ export function LobbyPage() {
   }, [match.matchId, send])
 
   useEffect(() => {
-    if (match.status === 'active') {
+    if (match.status === 'active' || match.status === 'leaderboard') {
       navigate('/battle')
     }
   }, [match.status, navigate])

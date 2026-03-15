@@ -61,6 +61,7 @@ func (s *Service) Submit(ctx context.Context, submission Submission) (*Result, e
 	existing, err := s.repo.GetPlayerResult(ctx, submission.UserID, submission.ChallengeDate)
 	if err == nil && existing != nil {
 		existing.Percentile, _ = s.leaderboard.Percentile(ctx, submission.ChallengeDate, submission.UserID)
+		existing.CorrectCount = existing.Score / 100
 		return existing, nil
 	}
 
@@ -112,7 +113,7 @@ func (s *Service) Submit(ctx context.Context, submission Submission) (*Result, e
 		return nil, fmt.Errorf("update streak: %w", err)
 	}
 
-	result := Result{UserID: submission.UserID, ChallengeDate: submission.ChallengeDate.UTC(), Score: score, Percentile: percentile, StreakDay: updatedStreak.Current, CompletedAt: time.Now().UTC()}
+	result := Result{UserID: submission.UserID, ChallengeDate: submission.ChallengeDate.UTC(), Score: score, CorrectCount: correctCount, Percentile: percentile, StreakDay: updatedStreak.Current, CompletedAt: time.Now().UTC()}
 	result.ShareCardText = s.GenerateShareCard(result, correctCount, len(challenge.Questions))
 	if err := s.repo.SavePlayerResult(ctx, result); err != nil {
 		return nil, fmt.Errorf("save daily result: %w", err)

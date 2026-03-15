@@ -8,7 +8,46 @@ import (
 	"github.com/google/uuid"
 
 	domaindaily "github.com/radhakrishna/archbattle/core/internal/domain/daily"
+	"github.com/radhakrishna/archbattle/core/internal/domain/shared"
 )
+
+type dailyChallengeClientResponse struct {
+	ID              uuid.UUID                 `json:"id"`
+	ChallengeDate   string                    `json:"challengeDate"`
+	QuestionIDs     []uuid.UUID               `json:"questionIds"`
+	Theme           string                    `json:"theme"`
+	AISummary       string                    `json:"aiSummary"`
+	SummaryReviewed bool                      `json:"summaryReviewed"`
+	PublishedAt     *string                   `json:"publishedAt,omitempty"`
+	Questions       []shared.QuestionSnapshot `json:"questions,omitempty"`
+}
+
+func toClientChallenge(c *domaindaily.DailyChallenge) *dailyChallengeClientResponse {
+	if c == nil {
+		return nil
+	}
+	questions := make([]shared.QuestionSnapshot, 0, len(c.Questions))
+	for i := range c.Questions {
+		if s := c.Questions[i].ToClientSnapshot(); s != nil {
+			questions = append(questions, *s)
+		}
+	}
+	var publishedAt *string
+	if c.PublishedAt != nil {
+		s := c.PublishedAt.Format(time.RFC3339)
+		publishedAt = &s
+	}
+	return &dailyChallengeClientResponse{
+		ID:              c.ID,
+		ChallengeDate:   c.ChallengeDate.Format("2006-01-02"),
+		QuestionIDs:     c.QuestionIDs,
+		Theme:           c.Theme,
+		AISummary:       c.AISummary,
+		SummaryReviewed: c.SummaryReviewed,
+		PublishedAt:     publishedAt,
+		Questions:       questions,
+	}
+}
 
 type DailyHandler struct {
 	service *domaindaily.Service
@@ -40,7 +79,7 @@ func (h *DailyHandler) GetChallenge(w stdhttp.ResponseWriter, r *stdhttp.Request
 		writeJSON(w, stdhttp.StatusNotFound, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, stdhttp.StatusOK, challenge)
+	writeJSON(w, stdhttp.StatusOK, toClientChallenge(challenge))
 }
 
 func (h *DailyHandler) Submit(w stdhttp.ResponseWriter, r *stdhttp.Request) {

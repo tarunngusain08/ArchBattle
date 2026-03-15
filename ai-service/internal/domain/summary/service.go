@@ -17,7 +17,7 @@ func NewService(llm shared.LLMClient) *Service {
 }
 
 func (s *Service) Learning(ctx context.Context, req LearningRequest) (*LearningResponse, error) {
-	text, _, err := s.llm.Complete(ctx, shared.CompletionRequest{Model: "claude-3-5-haiku-latest", SystemPrompt: "Return compact JSON with strength, weakness, recommendation, eloNarrative.", Messages: []shared.Message{{Role: "user", Content: fmt.Sprintf("Summarize the match %s on topic %s tier %s with standings %v", req.MatchID, req.Topic, req.Tier, req.Standings)}}, Temperature: 0.2, MaxTokens: 300})
+	text, _, err := s.llm.Complete(ctx, shared.CompletionRequest{Model: "gemini-2.0-flash", SystemPrompt: "Return compact JSON with strength, weakness, recommendation, eloNarrative.", Messages: []shared.Message{{Role: "user", Content: fmt.Sprintf("Summarize the match %s on topic %s tier %s with standings %v", req.MatchID, req.Topic, req.Tier, req.Standings)}}, Temperature: 0.2, MaxTokens: 300})
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +29,7 @@ func (s *Service) Learning(ctx context.Context, req LearningRequest) (*LearningR
 }
 
 func (s *Service) Discussion(ctx context.Context, req DiscussionRequest) (*DiscussionResponse, error) {
-	text, _, err := s.llm.Complete(ctx, shared.CompletionRequest{Model: "claude-3-5-sonnet-latest", SystemPrompt: "Summarize the discussion in 3-5 sentences.", Messages: append([]shared.Message{{Role: "user", Content: req.Question}}, req.Messages...), Temperature: 0.2, MaxTokens: 250})
+	text, _, err := s.llm.Complete(ctx, shared.CompletionRequest{Model: "gemini-2.0-flash", SystemPrompt: "Summarize the discussion in 3-5 sentences.", Messages: append([]shared.Message{{Role: "user", Content: req.Question}}, req.Messages...), Temperature: 0.2, MaxTokens: 250})
 	if err != nil {
 		return nil, err
 	}

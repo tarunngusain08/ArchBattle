@@ -31,11 +31,21 @@ func scanQuestion(scanner rowScanner) (*shared.QuestionSnapshot, error) {
 	if err := scanner.Scan(&snapshot.ID, &snapshot.Mode, &snapshot.Topic, &snapshot.DifficultyTier, &snapshot.Prompt, &options, &correctAnswers, &snapshot.Rationale); err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal(options, &snapshot.Options); err != nil {
-		return nil, fmt.Errorf("decode options: %w", err)
+	if len(options) > 0 {
+		if err := json.Unmarshal(options, &snapshot.Options); err != nil {
+			return nil, fmt.Errorf("decode options: %w", err)
+		}
 	}
-	if err := json.Unmarshal(correctAnswers, &snapshot.CorrectAnswers); err != nil {
-		return nil, fmt.Errorf("decode correct answers: %w", err)
+	if snapshot.Options == nil {
+		snapshot.Options = []string{}
+	}
+	if len(correctAnswers) > 0 {
+		if err := json.Unmarshal(correctAnswers, &snapshot.CorrectAnswers); err != nil {
+			return nil, fmt.Errorf("decode correct answers: %w", err)
+		}
+	}
+	if snapshot.CorrectAnswers == nil {
+		snapshot.CorrectAnswers = []int{}
 	}
 	return &snapshot, nil
 }

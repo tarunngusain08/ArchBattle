@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -50,7 +51,7 @@ type acceptSoloPayload struct {
 	Mode  string `json:"mode"`
 }
 
-func (g *Gateway) readPump(ctx context.Context, c *client) {
+func (g *Gateway) readPump(c *client) {
 	defer func() {
 		if c.activeMatch != uuid.Nil {
 			_ = g.matchService.HandleDisconnect(context.Background(), c.activeMatch, c.userID)
@@ -68,7 +69,7 @@ func (g *Gateway) readPump(ctx context.Context, c *client) {
 			continue
 		}
 		start := time.Now()
-		if err := g.handleMessage(ctx, c, envelope); err != nil {
+		if err := g.handleMessage(c.ctx, c, envelope); err != nil {
 			c.send <- mustJSON(outboundEnvelope{Type: "error", Payload: map[string]any{"message": err.Error()}, CreatedAt: time.Now().UTC()})
 		}
 		if g.metrics != nil {
@@ -108,6 +109,8 @@ func (g *Gateway) handleMessage(ctx context.Context, c *client, envelope inbound
 	switch envelope.Type {
 	case "join_match":
 		return g.handleJoinMatch(ctx, c, envelope.Payload)
+	case "start_battle":
+		return g.handleStartBattle(ctx, c, envelope.Payload)
 	case "answer_submit":
 		return g.handleAnswerSubmit(ctx, c, envelope.Payload)
 	case "reconnect":
@@ -139,29 +142,35 @@ func (g *Gateway) handleJoinMatch(ctx context.Context, c *client, raw json.RawMe
 	if g.streamReader != nil {
 		g.streamReader.Start(ctx, matchID)
 	}
-	if err := g.matchService.JoinMatch(ctx, matchID, c.userID); err != nil {
+	return g.matchService.JoinMatch(ctx, matchID, c.userID)
+}
+
+func (g *Gateway) handleStartBattle(ctx context.Context, c *client, raw json.RawMessage) error {
+	var payload joinPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
 		return err
 	}
-
-	// If this is the match creator joining (expected players already set),
-	// check if the lobby is full and launch the game loop.
-	// Lock order: loopMu before mu to avoid deadlock with other goroutines.
-	g.loopMu.Lock()
-	g.mu.RLock()
-	members := g.matches[matchID]
-	memberCount := len(members)
-	g.mu.RUnlock()
-	if !g.loopStarted[matchID] {
-		expected := g.expectedPlayers[matchID]
-		if expected > 0 && memberCount >= expected {
-			g.loopStarted[matchID] = true
-			loopCtx, cancel := context.WithCancel(context.Background())
-			g.loopCancels[matchID] = cancel
-			go g.matchService.RunMatchLoop(loopCtx, matchID, expected)
-		}
+	matchID, err := uuid.Parse(payload.MatchID)
+	if err != nil {
+		return err
 	}
-	g.loopMu.Unlock()
-
+	g.loopMu.Lock()
+	defer g.loopMu.Unlock()
+	owner, hasOwner := g.roomOwners[matchID]
+	if hasOwner && owner != c.userID {
+		return fmt.Errorf("only the room owner can start the battle")
+	}
+	if g.loopStarted[matchID] {
+		return nil
+	}
+	expected := g.expectedPlayers[matchID]
+	if expected <= 0 {
+		expected = 2
+	}
+	g.loopStarted[matchID] = true
+	loopCtx, cancel := context.WithCancel(context.Background())
+	g.loopCancels[matchID] = cancel
+	go g.matchService.RunMatchLoop(loopCtx, matchID, expected)
 	return nil
 }
 

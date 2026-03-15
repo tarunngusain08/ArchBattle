@@ -46,10 +46,25 @@ export function BattlePage() {
     return (
       <section className="panel rounded-3xl p-6">
         <h2 className="text-2xl font-semibold text-white">Waiting for the next question</h2>
-        <p className="mt-2 text-slate-300">Join a lobby or wait for the question broadcast to arrive.</p>
-        <div className="mt-5">
-          <Button onClick={() => navigate('/queue')}>Queue for a match</Button>
-        </div>
+        <p className="mt-2 text-slate-300">
+          {match.matchId
+            ? 'The battle is starting soon. Hang tight...'
+            : 'Create or join a room to start a battle.'}
+        </p>
+        {match.players.length > 0 ? (
+          <div className="mt-5 flex flex-wrap gap-2">
+            {match.players.map((player) => (
+              <span key={player} className="rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-200">
+                {player}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        {!match.matchId ? (
+          <div className="mt-5">
+            <Button onClick={() => navigate('/rooms')}>Go to rooms</Button>
+          </div>
+        ) : null}
       </section>
     )
   }

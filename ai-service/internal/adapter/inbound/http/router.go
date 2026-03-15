@@ -42,6 +42,7 @@ func NewRouter(params RouterParams) stdhttp.Handler {
 		r.Use(InternalAuth(params.InternalSecret))
 		r.Post("/ai/tutor", params.TutorHandler.Handle)
 		r.Post("/ai/draft-question", params.DraftHandler.Handle)
+		r.Post("/ai/draft-questions", params.DraftHandler.HandleBulk)
 		r.Post("/ai/variation", params.VariationHandler.Handle)
 		r.Post("/ai/calibrate-difficulty", params.CalibrateHandler.Handle)
 		r.Post("/ai/learning-summary", params.SummaryHandler.Learning)

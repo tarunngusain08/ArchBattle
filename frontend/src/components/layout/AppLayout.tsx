@@ -1,20 +1,18 @@
 import { NavLink, Outlet } from 'react-router-dom'
 
-import { useAuth } from '../../hooks/useAuth'
 import { useWebSocket } from '../../hooks/useWebSocket'
+import { usePlayerStore } from '../../stores/playerStore'
 import { Button } from '../common/Button'
 
 const navItems = [
-  { to: '/', label: 'Home' },
-  { to: '/queue', label: 'Queue' },
+  { to: '/rooms', label: 'Rooms' },
   { to: '/battle', label: 'Battle' },
   { to: '/daily', label: 'Daily' },
-  { to: '/discussion', label: 'Discussion' },
-  { to: '/profile', label: 'Profile' },
 ]
 
 export function AppLayout() {
-  const auth = useAuth()
+  const username = usePlayerStore((state) => state.username)
+  const clear = usePlayerStore((state) => state.clear)
   useWebSocket()
 
   return (
@@ -23,9 +21,9 @@ export function AppLayout() {
         <header className="panel mb-6 flex flex-col gap-4 rounded-3xl px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.35em] text-cyan-300">ArchBattle</p>
-            <h1 className="mt-2 text-3xl font-semibold text-white">Competitive system-design sparring</h1>
+            <h1 className="mt-2 text-3xl font-semibold text-white">Room-based system-design sparring</h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-300">
-              Match into real-time battles, review rationale, and reinforce concepts with the AI tutor.
+              Create or join rooms, battle in real-time, and reinforce concepts with the AI tutor.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -40,15 +38,14 @@ export function AppLayout() {
                 {item.label}
               </NavLink>
             ))}
-            {auth.isAuthenticated ? (
-              <Button variant="secondary" onClick={() => void auth.logout()}>
-                Sign out
-              </Button>
-            ) : (
-              <NavLink to="/login" className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950">
-                Sign in
-              </NavLink>
-            )}
+            {username ? (
+              <span className="rounded-full bg-slate-800 px-4 py-2 text-sm font-medium text-cyan-300">
+                {username}
+              </span>
+            ) : null}
+            <Button variant="secondary" onClick={() => clear()}>
+              Sign out
+            </Button>
           </div>
         </header>
 

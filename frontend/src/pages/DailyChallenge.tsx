@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect } from 'react'
 
 import { fetchDailyChallenge, submitDailyChallenge } from '../api/daily'
 import { Button } from '../components/common/Button'
@@ -16,14 +16,7 @@ export function DailyChallengePage() {
     }
   }, [challenge, setChallenge])
 
-  const correctCount = useMemo(
-    () =>
-      challenge?.questions.reduce((count, question) => {
-        const answer = answers[question.id]?.[0]
-        return question.correctAnswers?.includes(answer ?? -1) ? count + 1 : count
-      }, 0) ?? 0,
-    [answers, challenge],
-  )
+  const correctCount = result?.correctCount ?? 0
 
   return (
     <div className="space-y-6">

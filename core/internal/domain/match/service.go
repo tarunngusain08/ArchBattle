@@ -33,26 +33,19 @@ type Service struct {
 	events                EventPublisher
 	broadcaster           Broadcaster
 	questions             QuestionProvider
-	players               PlayerProgressStore
-	leaderboards          LeaderboardRecorder
-	summaries             SummaryRequester
 	streamTTL             time.Duration
 	transitionErrRecorder TransitionErrorRecorder
 }
 
-func NewService(matches MatchRepository, submissions SubmissionRepository, stateStore MatchStateStore, answers AnswerStore, events EventPublisher, broadcaster Broadcaster, questions QuestionProvider, players PlayerProgressStore, leaderboards LeaderboardRecorder, summaries SummaryRequester, streamTTL time.Duration, transitionErrRecorder TransitionErrorRecorder) *Service {
+func NewService(matches MatchRepository, submissions SubmissionRepository, stateStore MatchStateStore, answers AnswerStore, events EventPublisher, broadcaster Broadcaster, questions QuestionProvider, streamTTL time.Duration, transitionErrRecorder TransitionErrorRecorder) *Service {
 	if streamTTL <= 0 {
 		streamTTL = 10 * time.Minute
 	}
-	return &Service{matches: matches, submissions: submissions, stateStore: stateStore, answers: answers, events: events, broadcaster: broadcaster, questions: questions, players: players, leaderboards: leaderboards, summaries: summaries, streamTTL: streamTTL, transitionErrRecorder: transitionErrRecorder}
+	return &Service{matches: matches, submissions: submissions, stateStore: stateStore, answers: answers, events: events, broadcaster: broadcaster, questions: questions, streamTTL: streamTTL, transitionErrRecorder: transitionErrRecorder}
 }
 
 func (s *Service) SetBroadcaster(broadcaster Broadcaster) {
 	s.broadcaster = broadcaster
-}
-
-func (s *Service) SetSummaryRequester(requester SummaryRequester) {
-	s.summaries = requester
 }
 
 func (s *Service) CreateMatch(ctx context.Context, req CreateMatchRequest) (*Match, error) {
@@ -99,6 +92,25 @@ func (s *Service) CreateMatch(ctx context.Context, req CreateMatchRequest) (*Mat
 	}
 	created.Status = StateLobby
 	return created, nil
+}
+
+func (s *Service) AddPlayerToMatch(ctx context.Context, matchID, userID uuid.UUID, username string) error {
+	state, err := s.stateStore.GetMatchState(ctx, matchID)
+	if err != nil {
+		return fmt.Errorf("get match state: %w", err)
+	}
+	if state == nil {
+		return fmt.Errorf("match not found")
+	}
+	now := time.Now().UTC()
+	player := MatchPlayer{MatchID: matchID, UserID: userID, Username: username, Answers: map[string][]int{}, ELOBefore: 1000, JoinedAt: now}
+	if err := s.matches.AddPlayers(ctx, []MatchPlayer{player}); err != nil {
+		return fmt.Errorf("add player to match: %w", err)
+	}
+	if err := s.stateStore.AppendPlayer(ctx, matchID, userID); err != nil {
+		return fmt.Errorf("append player: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) JoinMatch(ctx context.Context, matchID, userID uuid.UUID) error {
@@ -252,62 +264,22 @@ func (s *Service) CompleteMatch(ctx context.Context, matchID uuid.UUID) ([]Playe
 		scores[submission.UserID] += submission.PointsAwarded
 	}
 
-	ids := make([]uuid.UUID, 0, len(players))
-	for _, player := range players {
-		ids = append(ids, player.UserID)
-	}
-	profiles, err := s.players.GetPlayerProfiles(ctx, matchRecord.Tier, ids)
-	if err != nil {
-		return nil, nil, fmt.Errorf("get player profiles: %w", err)
-	}
-
-	profileMap := make(map[uuid.UUID]PlayerProfile, len(profiles))
-	perfMap := make(map[uuid.UUID]float64, len(profiles))
-	totalPerf := 0.0
-	ratingTotal := 0.0
-	maxPoints := float64(shared.QuestionsPerMatch * 150)
-	if maxPoints == 0 {
-		maxPoints = 1
-	}
-	for _, profile := range profiles {
-		profileMap[profile.UserID] = profile
-		perf := float64(scores[profile.UserID]) / maxPoints
-		perfMap[profile.UserID] = perf
-		totalPerf += perf
-		ratingTotal += float64(profile.CurrentELO)
-	}
-
 	standings := make([]PlayerStanding, 0, len(players))
-	soloMatch := len(players) == 1
 	for _, player := range players {
-		profile := profileMap[player.UserID]
-		oppCount := len(profiles) - 1
-		meanOppPerf := 0.5
-		meanOppRating := float64(profile.CurrentELO)
-		if oppCount > 0 {
-			meanOppPerf = (totalPerf - perfMap[player.UserID]) / float64(oppCount)
-			meanOppRating = (ratingTotal - float64(profile.CurrentELO)) / float64(oppCount)
+		standing := PlayerStanding{
+			UserID:       player.UserID,
+			Username:     player.Username,
+			Score:        scores[player.UserID],
+			ELOBefore:    0,
+			ELOAfter:     0,
+			ELODelta:     0,
+			MatchesPlayed: 0,
+			Disconnected: player.Disconnected,
 		}
-
-		delta := 0
-		if !soloMatch {
-			delta = CalculateDelta(RatingInput{CurrentRating: profile.CurrentELO, MatchesPlayed: profile.MatchesPlayed, PerformanceScore: perfMap[player.UserID], MeanOpponentPerf: meanOppPerf, MeanOpponentRating: meanOppRating, ApplyDisconnectTax: player.Disconnected})
-		}
-		standing := PlayerStanding{UserID: player.UserID, Username: profile.Username, Score: scores[player.UserID], ELOBefore: profile.CurrentELO, ELOAfter: profile.CurrentELO + delta, ELODelta: delta, MatchesPlayed: profile.MatchesPlayed + 1, Disconnected: player.Disconnected}
 		standings = append(standings, standing)
 
 		if err := s.matches.UpdatePlayerResult(ctx, matchID, standing); err != nil {
 			return nil, nil, fmt.Errorf("update match result: %w", err)
-		}
-		if !soloMatch {
-			if err := s.players.UpdatePlayerProgress(ctx, matchRecord.Tier, standing); err != nil {
-				return nil, nil, fmt.Errorf("update player progress: %w", err)
-			}
-			if s.leaderboards != nil {
-				if err := s.leaderboards.RecordELO(ctx, matchRecord.Tier, standing.UserID, standing.ELOAfter, time.Now().UTC()); err != nil {
-					return nil, nil, fmt.Errorf("record leaderboard delta: %w", err)
-				}
-			}
 		}
 	}
 
@@ -322,15 +294,7 @@ func (s *Service) CompleteMatch(ctx context.Context, matchID uuid.UUID) ([]Playe
 		_ = s.answers.SetQuestionTTL(ctx, matchID, qID, 10*time.Minute)
 	}
 
-	var summary *LearningSummary
-	if s.summaries != nil {
-		var err error
-		summary, err = s.summaries.RequestLearningSummary(ctx, LearningSummaryRequest{MatchID: matchID, Topic: matchRecord.Topic, Tier: matchRecord.Tier, Standings: standings})
-		if err != nil {
-			slog.Default().With("match_id", matchID).Warn("learning summary request failed", "error", err)
-		}
-	}
-	return standings, summary, nil
+	return standings, nil, nil
 }
 
 func (s *Service) HandleDisconnect(ctx context.Context, matchID, userID uuid.UUID) error {

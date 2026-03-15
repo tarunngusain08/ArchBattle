@@ -4,7 +4,7 @@ import (
 	"context"
 	stdhttp "net/http"
 
-	"github.com/radhakrishna/archbattle/core/internal/domain/shared"
+	"github.com/google/uuid"
 )
 
 // TutorClient is the port for forwarding tutor requests to the AI service.
@@ -12,8 +12,7 @@ type TutorClient interface {
 	Tutor(ctx context.Context, body map[string]any) (map[string]any, error)
 }
 
-// TutorHandler proxies authenticated tutor requests from the client to the AI service.
-// The Core adds user context (userID, tier) before forwarding.
+// TutorHandler proxies tutor requests from the client to the AI service.
 type TutorHandler struct {
 	client TutorClient
 }
@@ -28,22 +27,16 @@ func (h *TutorHandler) Handle(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		return
 	}
 
-	userID, ok := CurrentUserID(r.Context())
-	if !ok {
-		writeJSON(w, stdhttp.StatusUnauthorized, map[string]string{"error": "unauthenticated"})
-		return
-	}
-
 	var body map[string]any
 	if err := readJSON(r, &body); err != nil {
 		writeJSON(w, stdhttp.StatusBadRequest, map[string]string{"error": "invalid json payload"})
 		return
 	}
 
-	// Inject authenticated user context so the AI service can apply per-user rate limits.
-	body["user_id"] = userID.String()
-	if tier, ok := r.Context().Value(shared.TierContextKey).(shared.Tier); ok {
-		body["tier"] = string(tier)
+	if userIDStr, ok := body["userId"].(string); ok && userIDStr != "" {
+		if userID, err := uuid.Parse(userIDStr); err == nil {
+			body["user_id"] = userID.String()
+		}
 	}
 
 	result, err := h.client.Tutor(r.Context(), body)

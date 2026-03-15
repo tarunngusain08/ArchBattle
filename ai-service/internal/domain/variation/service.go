@@ -19,7 +19,7 @@ func (s *Service) Generate(ctx context.Context, req Request) (*Response, error) 
 	if req.Count <= 0 {
 		req.Count = 3
 	}
-	text, _, err := s.llm.Complete(ctx, shared.CompletionRequest{Model: "gpt-4o-mini", SystemPrompt: "Produce one variation per line.", Messages: []shared.Message{{Role: "user", Content: "Create structural variations for: " + req.BasePrompt}}, Temperature: 0.4, MaxTokens: 600})
+	text, _, err := s.llm.Complete(ctx, shared.CompletionRequest{Model: "openai/gpt-4o-mini", SystemPrompt: "Produce one variation per line.", Messages: []shared.Message{{Role: "user", Content: "Create structural variations for: " + req.BasePrompt}}, Temperature: 0.4, MaxTokens: 600})
 	if err != nil {
 		return nil, err
 	}

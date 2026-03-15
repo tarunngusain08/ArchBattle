@@ -23,6 +23,9 @@ func (m *mockQuestionRepo) SelectQuestion(ctx context.Context, seenBy []uuid.UUI
 func (m *mockQuestionRepo) SelectFallbackRandom(ctx context.Context, tier shared.Tier, mode shared.Mode) (*Question, error) {
 	return nil, nil
 }
+func (m *mockQuestionRepo) SelectFallbackRandomN(ctx context.Context, tier shared.Tier, mode shared.Mode, count int, exclude []uuid.UUID) ([]*Question, error) {
+	return nil, nil
+}
 func (m *mockQuestionRepo) GetByID(ctx context.Context, id uuid.UUID) (*Question, error) {
 	return m.question, nil
 }

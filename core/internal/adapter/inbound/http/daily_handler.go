@@ -15,6 +15,7 @@ type DailyHandler struct {
 }
 
 type dailySubmitRequest struct {
+	UserID      string           `json:"userId"`
 	Date        string           `json:"date"`
 	Answers     map[string][]int `json:"answers"`
 	TotalMillis int64            `json:"totalMillis"`
@@ -43,14 +44,14 @@ func (h *DailyHandler) GetChallenge(w stdhttp.ResponseWriter, r *stdhttp.Request
 }
 
 func (h *DailyHandler) Submit(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-	userID, ok := CurrentUserID(r.Context())
-	if !ok {
-		writeJSON(w, stdhttp.StatusUnauthorized, map[string]string{"error": "missing user context"})
-		return
-	}
 	var req dailySubmitRequest
 	if err := readJSON(r, &req); err != nil {
 		writeJSON(w, stdhttp.StatusBadRequest, map[string]string{"error": "invalid json payload"})
+		return
+	}
+	userID, err := uuid.Parse(req.UserID)
+	if err != nil {
+		writeJSON(w, stdhttp.StatusBadRequest, map[string]string{"error": "invalid userId"})
 		return
 	}
 	date := time.Now().UTC()

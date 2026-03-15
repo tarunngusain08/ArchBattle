@@ -83,10 +83,18 @@ export interface DailyResult {
   userId: string
   challengeDate: string
   score: number
+  correctCount: number
   percentile: number
   streakDay: number
   shareCardText: string
   completedAt: string
+}
+
+export interface RoundResult {
+  userId: string
+  username: string
+  pointsAwarded: number
+  isCorrect: boolean
 }
 
 export interface LeaderboardEntry {

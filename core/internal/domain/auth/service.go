@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -13,6 +14,8 @@ import (
 )
 
 var (
+	usernameRegex        = regexp.MustCompile(`^[a-zA-Z0-9_]{3,30}$`)
+	emailRegex           = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrInvalidToken       = errors.New("invalid token")
 )
@@ -38,6 +41,12 @@ func (s *Service) Register(ctx context.Context, username, email, password string
 	email = strings.ToLower(strings.TrimSpace(email))
 	if username == "" || email == "" || len(password) < 8 {
 		return nil, fmt.Errorf("username, email and an 8+ char password are required")
+	}
+	if !usernameRegex.MatchString(username) {
+		return nil, fmt.Errorf("username must be 3-30 chars, alphanumeric and underscore only")
+	}
+	if !emailRegex.MatchString(email) {
+		return nil, fmt.Errorf("invalid email format")
 	}
 
 	if existing, err := s.users.FindByEmail(ctx, email); err == nil && existing != nil {

@@ -35,7 +35,7 @@ func (s *Service) Handle(ctx context.Context, req Request) (*Response, error) {
 	// History contains prior turns; the new user message is appended at the end so
 	// the conversation flows chronologically: earliest turns first, newest last.
 	messages := append(req.History, shared.Message{Role: "user", Content: fmt.Sprintf("Question: %s\nOfficial rationale: %s\nPlayer answer: %v", req.QuestionPrompt, req.OfficialReason, req.PlayerAnswer)})
-	text, tokens, err := s.llm.Complete(ctx, shared.CompletionRequest{Model: "gemini-2.0-flash", SystemPrompt: prompt, Messages: messages, Temperature: 0.3, MaxTokens: 500})
+	text, tokens, err := s.llm.Complete(ctx, shared.CompletionRequest{Model: "gpt-4o-mini", SystemPrompt: prompt, Messages: messages, Temperature: 0.3, MaxTokens: 500})
 	if err != nil {
 		return nil, fmt.Errorf("generate tutor response: %w", err)
 	}

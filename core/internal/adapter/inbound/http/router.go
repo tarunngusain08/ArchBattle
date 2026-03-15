@@ -11,19 +11,13 @@ import (
 )
 
 type RouterParams struct {
-	Middleware          *Middleware
-	AuthHandler         *AuthHandler
-	MatchHandler        *MatchHandler
-	DailyHandler        *DailyHandler
-	DiscussionHandler   *DiscussionHandler
-	QuestionHandler     *QuestionHandler
-	LeaderboardHandler  *LeaderboardHandler
-	AdminHandler        *AdminHandler
-	UserHandler         *UserHandler
-	TutorHandler        *TutorHandler
-	WSGateway           stdhttp.Handler
-	MetricsHandler      stdhttp.Handler
-	AllowedOrigins      []string
+	DailyHandler   *DailyHandler
+	PlayerHandler  *PlayerHandler
+	RoomHandler    *RoomHandler
+	TutorHandler   *TutorHandler
+	WSGateway      stdhttp.Handler
+	MetricsHandler stdhttp.Handler
+	AllowedOrigins []string
 }
 
 func NewRouter(params RouterParams) stdhttp.Handler {
@@ -42,9 +36,6 @@ func NewRouter(params RouterParams) stdhttp.Handler {
 	router.Use(chimiddleware.RequestID)
 	router.Use(chimiddleware.RealIP)
 	router.Use(corsHandler)
-	if params.Middleware != nil {
-		router.Use(params.Middleware.RequestLogger)
-	}
 
 	router.Get("/health", func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -54,64 +45,24 @@ func NewRouter(params RouterParams) stdhttp.Handler {
 		router.Handle("/metrics", params.MetricsHandler)
 	}
 
-	// /ws is exempt from the 30s timeout because WebSocket connections are long-lived.
 	if params.WSGateway != nil {
 		router.Handle("/ws", params.WSGateway)
 	}
 
-	// Admin AI routes with 2min timeout (must be registered before 30s group to take precedence).
-	if params.Middleware != nil {
-		router.Group(func(r chi.Router) {
-			r.Use(params.Middleware.Authenticated)
-			r.Use(params.Middleware.AdminOnly)
-			r.Use(chimiddleware.Timeout(2 * time.Minute))
-			r.Post("/admin/ai/draft-question", params.AdminHandler.DraftQuestion)
-			r.Post("/admin/daily-challenge/summary", params.AdminHandler.GenerateDailySummary)
-		})
-	}
-
-	// All HTTP API routes share the 30s request timeout.
 	router.Group(func(r chi.Router) {
 		r.Use(chimiddleware.Timeout(30 * time.Second))
 
-		r.Route("/auth", func(auth chi.Router) {
-			auth.Post("/register", params.AuthHandler.Register)
-			auth.Post("/login", params.AuthHandler.Login)
-			if params.Middleware != nil {
-				auth.With(params.Middleware.Authenticated).Post("/logout", params.AuthHandler.Logout)
-			}
-		})
+		r.Post("/join", params.PlayerHandler.Join)
+		r.Post("/rooms", params.RoomHandler.CreateRoom)
+		r.Post("/rooms/{code}/join", params.RoomHandler.JoinRoom)
+		r.Get("/rooms/{code}", params.RoomHandler.GetRoomStatus)
 
-		r.Get("/leaderboard", params.LeaderboardHandler.Get)
+		r.Get("/daily-challenge", params.DailyHandler.GetChallenge)
+		r.Post("/daily-submit", params.DailyHandler.Submit)
+		r.Get("/daily-share-card", params.DailyHandler.ShareCard)
 
-		if params.Middleware != nil {
-			r.Group(func(api chi.Router) {
-				api.Use(params.Middleware.Authenticated)
-				api.Post("/match/queue", params.MatchHandler.Queue)
-				api.Delete("/match/queue", params.MatchHandler.Dequeue)
-				api.Get("/daily-challenge", params.DailyHandler.GetChallenge)
-				api.Post("/daily-submit", params.DailyHandler.Submit)
-				api.Get("/daily-share-card", params.DailyHandler.ShareCard)
-				api.Route("/daily-challenge/{date}/discussion", func(d chi.Router) {
-					d.Get("/", params.DiscussionHandler.List)
-					d.Post("/", params.DiscussionHandler.Create)
-					d.Post("/{id}/upvote", params.DiscussionHandler.Upvote)
-				})
-				api.Post("/questions/{id}/dispute", params.QuestionHandler.Dispute)
-				api.Get("/users/me", params.UserHandler.Me)
-				if params.TutorHandler != nil {
-					api.Post("/api/tutor", params.TutorHandler.Handle)
-				}
-				api.Route("/admin", func(admin chi.Router) {
-					admin.Use(params.Middleware.AdminOnly)
-					admin.Get("/questions", params.AdminHandler.ListDrafts)
-					admin.Post("/questions", params.AdminHandler.CreateQuestion)
-					admin.Patch("/questions/{id}", params.AdminHandler.UpdateQuestionStatus)
-					admin.Get("/disputes", params.AdminHandler.ListDisputes)
-					admin.Post("/daily-challenge/publish", params.AdminHandler.PublishDaily)
-					// AI draft and summary registered above with 2min timeout.
-				})
-			})
+		if params.TutorHandler != nil {
+			r.Post("/api/tutor", params.TutorHandler.Handle)
 		}
 	})
 

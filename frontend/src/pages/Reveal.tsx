@@ -5,17 +5,17 @@ import { Button } from '../components/common/Button'
 import { RevealCard } from '../components/match/RevealCard'
 import { TutorPanel } from '../components/match/TutorPanel'
 import { useMatch } from '../hooks/useMatch'
-import { useAuthStore } from '../stores/authStore'
+import { usePlayerStore } from '../stores/playerStore'
 import { useMatchStore } from '../stores/matchStore'
 
 export function RevealPage() {
   const match = useMatch()
   const navigate = useNavigate()
   const status = useMatchStore((state) => state.status)
-  const session = useAuthStore((state) => state.session)
+  const userId = usePlayerStore((state) => state.userId)
   const [tutorOpen, setTutorOpen] = useState(false)
 
-  const playerChoices = session?.userId ? match.reveal?.playerChoices?.[session.userId] : undefined
+  const playerChoices = userId ? match.reveal?.playerChoices?.[userId] : undefined
 
   // Navigate to /battle when the next question_broadcast arrives (status becomes 'active').
   useEffect(() => {
@@ -44,6 +44,7 @@ export function RevealPage() {
       </div>
       {tutorOpen && (
         <TutorPanel
+          userId={userId}
           questionId={match.question?.id}
           questionPrompt={match.question?.prompt}
           officialReason={match.reveal?.rationale}

@@ -30,6 +30,7 @@ type Result struct {
 	UserID        uuid.UUID `json:"userId"`
 	ChallengeDate time.Time `json:"challengeDate"`
 	Score         int       `json:"score"`
+	CorrectCount  int       `json:"correctCount"`
 	Percentile    float64   `json:"percentile"`
 	StreakDay     int       `json:"streakDay"`
 	ShareCardText string    `json:"shareCardText"`

@@ -1,0 +1,150 @@
+
+<div id="erd" style="padding:1rem 0"></div>
+<script type="module">
+import mermaid from 'https://esm.sh/mermaid@11/dist/mermaid.esm.min.mjs';
+const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+await document.fonts.ready;
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'base',
+  fontFamily: '"Anthropic Sans", sans-serif',
+  themeVariables: {
+    darkMode: dark,
+    fontSize: '13px',
+    fontFamily: '"Anthropic Sans", sans-serif',
+    lineColor: dark ? '#9c9a92' : '#73726c',
+    textColor: dark ? '#c2c0b6' : '#3d3d3a',
+  },
+});
+const { svg } = await mermaid.render('erd-svg', `erDiagram
+  users {
+    uuid id PK
+    string username
+    string email
+    string tier
+    int junior_elo
+    int senior_elo
+    int staff_elo
+    int current_streak
+    int longest_streak
+    date last_daily_date
+    timestamp created_at
+  }
+  questions {
+    uuid id PK
+    string mode
+    string topic
+    string difficulty_tier
+    text prompt
+    jsonb options
+    jsonb correct_answers
+    text rationale
+    int dispute_count
+    float pilot_dispute_rate
+    bool is_active
+    bool daily_eligible
+    uuid reviewed_by FK
+    timestamp created_at
+  }
+  matches {
+    uuid id PK
+    string mode
+    string topic
+    string tier
+    string status
+    uuid[] question_ids
+    timestamp started_at
+    timestamp ended_at
+  }
+  match_players {
+    uuid match_id FK
+    uuid user_id FK
+    int score
+    jsonb answers
+    int elo_before
+    int elo_after
+    int elo_delta
+    bool disconnected
+  }
+  answer_submissions {
+    uuid id PK
+    uuid match_id FK
+    uuid user_id FK
+    uuid question_id FK
+    jsonb chosen_options
+    bool is_correct
+    int points_awarded
+    bigint server_received_at
+  }
+  daily_challenges {
+    uuid id PK
+    date challenge_date
+    uuid[] question_ids
+    string theme
+    text ai_summary
+    bool summary_reviewed
+    timestamp published_at
+  }
+  player_daily_challenges {
+    uuid user_id FK
+    date challenge_date
+    int score
+    int streak_day
+    text share_card_text
+    timestamp completed_at
+  }
+  discussion_entries {
+    uuid id PK
+    date challenge_date
+    uuid user_id FK
+    int question_number
+    text reasoning_text
+    text alternative_text
+    text surprise_text
+    int upvotes
+    timestamp created_at
+  }
+  ai_tutor_sessions {
+    uuid id PK
+    uuid match_id FK
+    uuid user_id FK
+    uuid question_id FK
+    jsonb messages
+    int token_count
+    timestamp created_at
+  }
+  users ||--o{ match_players : plays
+  users ||--o{ answer_submissions : submits
+  users ||--o{ player_daily_challenges : completes
+  users ||--o{ discussion_entries : writes
+  users ||--o{ ai_tutor_sessions : uses
+  matches ||--o{ match_players : has
+  matches ||--o{ answer_submissions : contains
+  questions ||--o{ answer_submissions : answered_in
+  daily_challenges ||--o{ player_daily_challenges : played_by
+  daily_challenges ||--o{ discussion_entries : has
+`);
+document.getElementById('erd').innerHTML = svg;
+document.querySelectorAll('#erd svg .node').forEach(node => {
+  const firstPath = node.querySelector('path[d]');
+  if (!firstPath) return;
+  const d = firstPath.getAttribute('d');
+  const nums = d.match(/-?[\d.]+/g)?.map(Number);
+  if (!nums || nums.length < 8) return;
+  const xs = [nums[0],nums[2],nums[4],nums[6]];
+  const ys = [nums[1],nums[3],nums[5],nums[7]];
+  const x = Math.min(...xs), y = Math.min(...ys);
+  const w = Math.max(...xs)-x, h = Math.max(...ys)-y;
+  const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+  rect.setAttribute('x',x); rect.setAttribute('y',y);
+  rect.setAttribute('width',w); rect.setAttribute('height',h);
+  rect.setAttribute('rx','8');
+  for (const a of ['fill','stroke','stroke-width','class','style']) {
+    if (firstPath.hasAttribute(a)) rect.setAttribute(a, firstPath.getAttribute(a));
+  }
+  firstPath.replaceWith(rect);
+});
+document.querySelectorAll('#erd svg .row-rect-odd path, #erd svg .row-rect-even path').forEach(p => {
+  p.setAttribute('stroke','none');
+});
+</script>

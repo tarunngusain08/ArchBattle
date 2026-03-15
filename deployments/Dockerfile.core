@@ -1,0 +1,17 @@
+FROM golang:1.24-alpine AS builder
+WORKDIR /src
+COPY core/go.mod core/go.sum* ./core/
+WORKDIR /src/core
+RUN go mod download
+COPY core/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/archbattle-core ./cmd/server
+
+FROM alpine:3.21
+RUN adduser -D -g '' appuser
+WORKDIR /app
+COPY --from=builder /bin/archbattle-core /app/archbattle-core
+COPY core/migrations /app/migrations
+ENV CORE_HTTP_PORT=8080
+EXPOSE 8080
+USER appuser
+ENTRYPOINT ["/app/archbattle-core"]

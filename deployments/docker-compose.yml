@@ -1,0 +1,98 @@
+version: '3.9'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    command: redis-server --save 60 1 --loglevel warning
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: archbattle
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d archbattle']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  core:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.core
+    env_file:
+      - ../.env.example
+    environment:
+      CORE_HTTP_PORT: 8080
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/archbattle?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      AI_SERVICE_URL: http://ai-service:8081
+      AI_INTERNAL_SECRET: ${AI_INTERNAL_SECRET:-change-me-in-prod}
+      ALLOWED_ORIGINS: http://localhost:5173
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - '8080:8080'
+
+  ai-service:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.ai
+    env_file:
+      - ../.env.example
+    environment:
+      AI_HTTP_PORT: 8081
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/archbattle?sslmode=disable
+      AI_INTERNAL_SECRET: ${AI_INTERNAL_SECRET:-change-me-in-prod}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    # Port is NOT published externally. The ai-service is only reachable from
+    # within the Docker network (i.e., from the core service). This prevents
+    # unauthenticated direct access to the AI endpoints.
+
+  frontend:
+    image: node:22-alpine
+    working_dir: /app/frontend
+    command: sh -c 'npm install && npm run dev -- --host 0.0.0.0 --port 5173'
+    volumes:
+      - ..:/app
+    expose:
+      - '5173'
+    environment:
+      VITE_API_BASE_URL: http://localhost
+      VITE_WS_URL: ws://localhost/ws
+    depends_on:
+      core:
+        condition: service_started
+
+  nginx:
+    image: nginx:1.25-alpine
+    ports:
+      - '80:80'
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - core
+      - frontend
+
+volumes:
+  postgres-data:

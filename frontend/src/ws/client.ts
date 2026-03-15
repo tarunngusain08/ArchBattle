@@ -11,14 +11,17 @@ export class ArchBattleSocketClient {
   private reconnectTimer?: ReturnType<typeof setTimeout>
   private readonly onMessage: (message: SocketMessage) => void
   private readonly onStatusChange?: (connected: boolean) => void
-  private readonly token: string
+  private readonly userId: string
+  private readonly username: string
 
   constructor(
-    token: string,
+    userId: string,
+    username: string,
     onMessage: (message: SocketMessage) => void,
     onStatusChange?: (connected: boolean) => void,
   ) {
-    this.token = token
+    this.userId = userId
+    this.username = username
     this.onMessage = onMessage
     this.onStatusChange = onStatusChange
   }
@@ -32,7 +35,8 @@ export class ArchBattleSocketClient {
       return
     }
     this.intentionalClose = false
-    this.socket = new WebSocket(`${DEFAULT_WS_URL}?token=${encodeURIComponent(this.token)}`)
+    const params = new URLSearchParams({ userId: this.userId, username: this.username })
+    this.socket = new WebSocket(`${DEFAULT_WS_URL}?${params.toString()}`)
     this.socket.onopen = () => {
       this.reconnectAttempts = 0
       this.onStatusChange?.(true)

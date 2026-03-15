@@ -40,6 +40,8 @@ export function QuestionCard({ question, onChoose }: { question: QuestionSnapsho
             className="justify-start text-left"
             onClick={() => onChoose(index)}
             onFocus={() => setHighlighted(index)}
+            aria-label={`Option ${index + 1}: ${option}`}
+            aria-pressed={highlighted === index}
           >
             <span className="mr-3 rounded-full bg-slate-700 px-2 py-1 text-xs text-slate-100">{index + 1}</span>
             {option}

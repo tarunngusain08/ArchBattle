@@ -9,6 +9,7 @@ interface TutorMessage {
 }
 
 interface TutorPanelProps {
+  userId?: string
   questionId?: string
   questionPrompt?: string
   officialReason?: string
@@ -27,6 +28,7 @@ interface TutorResponse {
  * which authenticates the user and proxies to the AI service.
  */
 export function TutorPanel({
+  userId,
   questionId,
   questionPrompt,
   officialReason,
@@ -54,6 +56,7 @@ export function TutorPanel({
       const response = await apiFetch<TutorResponse>('/api/tutor', {
         method: 'POST',
         body: JSON.stringify({
+          userId,
           question_id: questionId,
           question_prompt: questionPrompt,
           official_reason: officialReason,

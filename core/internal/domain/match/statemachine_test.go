@@ -8,9 +8,12 @@ func TestCanTransition(t *testing.T) {
 		{StateLobby, StateActive},
 		{StateLobby, StateAbandoned},
 		{StateActive, StateRevealing},
+		{StateActive, StateLeaderboard},
 		{StateActive, StateAbandoned},
 		{StateRevealing, StateActive},
 		{StateRevealing, StateScoring},
+		{StateLeaderboard, StateActive},
+		{StateLeaderboard, StateScoring},
 		{StateScoring, StateEnded},
 	}
 	for _, pair := range valid {

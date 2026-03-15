@@ -11,13 +11,14 @@ import (
 type MatchState string
 
 const (
-	StateCreated   MatchState = "created"
-	StateLobby     MatchState = "lobby"
-	StateActive    MatchState = "active"
-	StateRevealing MatchState = "revealing"
-	StateScoring   MatchState = "scoring"
-	StateEnded     MatchState = "ended"
-	StateAbandoned MatchState = "abandoned"
+	StateCreated     MatchState = "created"
+	StateLobby       MatchState = "lobby"
+	StateActive      MatchState = "active"
+	StateRevealing   MatchState = "revealing"
+	StateLeaderboard MatchState = "leaderboard"
+	StateScoring     MatchState = "scoring"
+	StateEnded       MatchState = "ended"
+	StateAbandoned   MatchState = "abandoned"
 )
 
 type Match struct {
@@ -109,6 +110,21 @@ type PlayerStanding struct {
 	ELODelta      int       `json:"eloDelta"`
 	MatchesPlayed int       `json:"matchesPlayed"`
 	Disconnected  bool      `json:"disconnected"`
+}
+
+type RecordChoiceRequest struct {
+	MatchID          uuid.UUID `json:"matchId"`
+	UserID           uuid.UUID `json:"userId"`
+	QuestionID       uuid.UUID `json:"questionId"`
+	Choices          []int     `json:"choices"`
+	ServerReceivedAt int64     `json:"serverReceivedAt"`
+}
+
+type RoundResult struct {
+	UserID        uuid.UUID `json:"userId"`
+	Username      string    `json:"username"`
+	PointsAwarded int       `json:"pointsAwarded"`
+	IsCorrect     bool      `json:"isCorrect"`
 }
 
 type LearningSummaryRequest struct {

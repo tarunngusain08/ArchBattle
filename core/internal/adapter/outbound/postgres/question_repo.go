@@ -133,6 +133,17 @@ func (r *QuestionRepo) SelectQuestion(ctx context.Context, seenBy []uuid.UUID, t
 	return scanFullQuestion(row)
 }
 
+func (r *QuestionRepo) SelectFallbackRandom(ctx context.Context, tier shared.Tier, mode shared.Mode) (*domainquestion.Question, error) {
+	row := r.pool.QueryRow(ctx, `
+        SELECT id, mode, topic, difficulty_tier, prompt, options, correct_answers, rationale, dispute_count, pilot_attempts, pilot_dispute_rate, is_active, daily_eligible, reviewed_by, second_reviewer, status, created_at
+        FROM questions
+        WHERE is_active = TRUE AND status IN ('live', 'staged')
+          AND difficulty_tier = $1 AND mode = $2
+        ORDER BY RANDOM() LIMIT 1
+    `, tier, mode)
+	return scanFullQuestion(row)
+}
+
 func (r *QuestionRepo) IncrementDispute(ctx context.Context, id uuid.UUID) (*domainquestion.Question, error) {
 	_, err := r.pool.Exec(ctx, `UPDATE questions SET dispute_count = dispute_count + 1 WHERE id = $1`, id)
 	if err != nil {
@@ -191,10 +202,16 @@ func scanFullQuestion(scanner rowScanner) (*domainquestion.Question, error) {
 			return nil, fmt.Errorf("decode question options: %w", err)
 		}
 	}
+	if question.Options == nil {
+		question.Options = []string{}
+	}
 	if len(correct) > 0 {
 		if err := json.Unmarshal(correct, &question.CorrectAnswers); err != nil {
 			return nil, fmt.Errorf("decode correct answers: %w", err)
 		}
+	}
+	if question.CorrectAnswers == nil {
+		question.CorrectAnswers = []int{}
 	}
 	question.Status = strings.ToLower(question.Status)
 	return question, nil

@@ -16,6 +16,7 @@ import (
 	domainauth "github.com/radhakrishna/archbattle/core/internal/domain/auth"
 	domainmatch "github.com/radhakrishna/archbattle/core/internal/domain/match"
 	domainquestion "github.com/radhakrishna/archbattle/core/internal/domain/question"
+	"github.com/radhakrishna/archbattle/core/internal/observability"
 )
 
 // SessionAuthenticator is the port the WS gateway uses to validate bearer tokens.
@@ -71,15 +72,16 @@ type MatchmakingDriver interface {
 }
 
 type Gateway struct {
-	auth            SessionAuthenticator
-	matchService    MatchDriver
-	matchmaking     MatchmakingDriver
-	questions       QuestionLookup
-	events          domainmatch.EventPublisher
-	streamReader    StreamStarter
-	upgrader        websocket.Upgrader
-	logger          *slog.Logger
-	allowedOrigins  []string
+	auth           SessionAuthenticator
+	matchService   MatchDriver
+	matchmaking    MatchmakingDriver
+	questions      QuestionLookup
+	events         domainmatch.EventPublisher
+	streamReader   StreamStarter
+	upgrader       websocket.Upgrader
+	logger         *slog.Logger
+	allowedOrigins []string
+	metrics        *observability.Metrics
 
 	mu      sync.RWMutex
 	clients map[uuid.UUID]*client
@@ -141,6 +143,10 @@ func (g *Gateway) SetMatchmaking(m MatchmakingDriver) {
 	g.matchmaking = m
 }
 
+func (g *Gateway) SetMetrics(metrics *observability.Metrics) {
+	g.metrics = metrics
+}
+
 // SetExpectedPlayers records how many players must join before the game loop starts.
 // Called by the matchmaking factory after creating a match.
 func (g *Gateway) SetExpectedPlayers(matchID uuid.UUID, count int) {
@@ -182,6 +188,9 @@ func (g *Gateway) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	g.mu.Lock()
 	g.clients[session.UserID] = c
 	g.mu.Unlock()
+	if g.metrics != nil {
+		g.metrics.WSConnectionsActive.Inc()
+	}
 
 	conn.SetReadLimit(4096)
 	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
@@ -262,6 +271,9 @@ func (g *Gateway) removeClient(c *client) {
 		}
 	}
 	g.mu.Unlock()
+	if g.metrics != nil {
+		g.metrics.WSConnectionsActive.Dec()
+	}
 	close(c.send)
 	_ = c.conn.Close()
 }

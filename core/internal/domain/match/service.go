@@ -19,25 +19,32 @@ const (
 	abandonedCheckInterval = 2 * time.Second
 )
 
-type Service struct {
-	matches      MatchRepository
-	submissions  SubmissionRepository
-	stateStore   MatchStateStore
-	answers      AnswerStore
-	events       EventPublisher
-	broadcaster  Broadcaster
-	questions    QuestionProvider
-	players      PlayerProgressStore
-	leaderboards LeaderboardRecorder
-	summaries    SummaryRequester
-	streamTTL    time.Duration
+// TransitionErrorRecorder records invalid match state transitions for observability.
+// When nil, no recording is performed.
+type TransitionErrorRecorder interface {
+	RecordMatchStateTransitionError()
 }
 
-func NewService(matches MatchRepository, submissions SubmissionRepository, stateStore MatchStateStore, answers AnswerStore, events EventPublisher, broadcaster Broadcaster, questions QuestionProvider, players PlayerProgressStore, leaderboards LeaderboardRecorder, summaries SummaryRequester, streamTTL time.Duration) *Service {
+type Service struct {
+	matches               MatchRepository
+	submissions           SubmissionRepository
+	stateStore            MatchStateStore
+	answers               AnswerStore
+	events                EventPublisher
+	broadcaster           Broadcaster
+	questions             QuestionProvider
+	players               PlayerProgressStore
+	leaderboards          LeaderboardRecorder
+	summaries             SummaryRequester
+	streamTTL             time.Duration
+	transitionErrRecorder TransitionErrorRecorder
+}
+
+func NewService(matches MatchRepository, submissions SubmissionRepository, stateStore MatchStateStore, answers AnswerStore, events EventPublisher, broadcaster Broadcaster, questions QuestionProvider, players PlayerProgressStore, leaderboards LeaderboardRecorder, summaries SummaryRequester, streamTTL time.Duration, transitionErrRecorder TransitionErrorRecorder) *Service {
 	if streamTTL <= 0 {
 		streamTTL = 10 * time.Minute
 	}
-	return &Service{matches: matches, submissions: submissions, stateStore: stateStore, answers: answers, events: events, broadcaster: broadcaster, questions: questions, players: players, leaderboards: leaderboards, summaries: summaries, streamTTL: streamTTL}
+	return &Service{matches: matches, submissions: submissions, stateStore: stateStore, answers: answers, events: events, broadcaster: broadcaster, questions: questions, players: players, leaderboards: leaderboards, summaries: summaries, streamTTL: streamTTL, transitionErrRecorder: transitionErrRecorder}
 }
 
 func (s *Service) SetBroadcaster(broadcaster Broadcaster) {
@@ -207,6 +214,9 @@ func (s *Service) RevealQuestion(ctx context.Context, matchID uuid.UUID, questio
 		return fmt.Errorf("match not found")
 	}
 	if err := MustTransition(state.State, StateRevealing); err != nil {
+		if s.transitionErrRecorder != nil {
+			s.transitionErrRecorder.RecordMatchStateTransitionError()
+		}
 		return err
 	}
 

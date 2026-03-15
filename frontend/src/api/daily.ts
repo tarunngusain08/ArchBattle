@@ -6,7 +6,7 @@ export async function fetchDailyChallenge(date?: string) {
   return apiFetch<DailyChallenge>(`/daily-challenge${query}`)
 }
 
-export async function submitDailyChallenge(payload: { date?: string; answers: Record<string, number[]>; totalMillis: number }) {
+export async function submitDailyChallenge(payload: { userId: string; date?: string; answers: Record<string, number[]>; totalMillis: number }) {
   return apiFetch<DailyResult>('/daily-submit', {
     method: 'POST',
     body: JSON.stringify(payload),

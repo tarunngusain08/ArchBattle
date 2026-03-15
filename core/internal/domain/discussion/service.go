@@ -9,12 +9,16 @@ import (
 )
 
 const (
-	MinQuestionNumber = 1
-	MaxQuestionNumber = 3
+	MinQuestionNumber  = 1
+	MaxQuestionNumber  = 3
+	MaxReasoningLen   = 2000
+	MaxAlternativeLen = 1000
+	MaxSurpriseLen    = 1000
 )
 
 var (
 	ErrInvalidQuestionNumber = errors.New("question number must be 1, 2, or 3")
+	ErrTextTooLong           = errors.New("text exceeds maximum length")
 )
 
 // Service provides discussion entry operations.
@@ -31,6 +35,15 @@ func NewService(repo Repository) *Service {
 func (s *Service) Add(ctx context.Context, req CreateRequest) (*Entry, error) {
 	if req.QuestionNumber < MinQuestionNumber || req.QuestionNumber > MaxQuestionNumber {
 		return nil, ErrInvalidQuestionNumber
+	}
+	if len(req.ReasoningText) > MaxReasoningLen {
+		return nil, ErrTextTooLong
+	}
+	if len(req.AlternativeText) > MaxAlternativeLen {
+		return nil, ErrTextTooLong
+	}
+	if len(req.SurpriseText) > MaxSurpriseLen {
+		return nil, ErrTextTooLong
 	}
 	return s.repo.Create(ctx, req)
 }

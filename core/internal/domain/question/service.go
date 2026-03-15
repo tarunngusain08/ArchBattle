@@ -3,6 +3,7 @@ package question
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,21 +14,36 @@ import (
 type Service struct {
 	repo             Repository
 	disputeThreshold float64
+	aiGen            AIQuestionGenerator
 }
 
-func NewService(repo Repository, disputeThreshold float64) *Service {
+func NewService(repo Repository, disputeThreshold float64, aiGen AIQuestionGenerator) *Service {
 	if disputeThreshold <= 0 {
 		disputeThreshold = 0.08
 	}
-	return &Service{repo: repo, disputeThreshold: disputeThreshold}
+	return &Service{repo: repo, disputeThreshold: disputeThreshold, aiGen: aiGen}
 }
 
 func (s *Service) SelectQuestion(ctx context.Context, seenBy []uuid.UUID, tier shared.Tier, topic shared.Topic, mode shared.Mode, exclude []uuid.UUID, excludePilot bool) (*shared.QuestionSnapshot, error) {
-	question, err := s.repo.SelectQuestion(ctx, seenBy, tier, topic, mode, time.Now().UTC().AddDate(0, 0, -7), exclude, excludePilot)
-	if err == nil && question != nil {
-		return toSnapshot(question), nil
+	// 1. Try AI generation (with timeout)
+	if s.aiGen != nil {
+		aiCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		if q, err := s.aiGen.GenerateQuestion(aiCtx, string(topic), string(tier), string(mode)); err == nil {
+			q.ID = uuid.New()
+			q.Status = "live"
+			q.IsActive = true
+			q.CreatedAt = time.Now().UTC()
+			if err := s.repo.Create(ctx, q); err != nil {
+				return nil, fmt.Errorf("persist ai question: %w", err)
+			}
+			return toSnapshot(q), nil
+		} else {
+			slog.Warn("ai question generation failed, using fallback", "topic", topic, "tier", tier, "error", err)
+		}
 	}
-	question, err = s.repo.SelectQuestion(ctx, seenBy, tier, topic, mode, time.Now().UTC().AddDate(0, 0, -3), exclude, excludePilot)
+	// 2. Fallback: random from DB (topic-agnostic)
+	question, err := s.repo.SelectFallbackRandom(ctx, tier, mode)
 	if err != nil {
 		return nil, fmt.Errorf("select fallback question: %w", err)
 	}

@@ -28,3 +28,17 @@ func (h *DraftHandler) Handle(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 	writeJSON(w, stdhttp.StatusOK, draft)
 }
+
+func (h *DraftHandler) HandleBulk(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+	var req drafter.BulkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, stdhttp.StatusBadRequest, map[string]string{"error": "invalid json payload"})
+		return
+	}
+	drafts, err := h.service.GenerateBulk(r.Context(), req)
+	if err != nil {
+		writeJSON(w, stdhttp.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, stdhttp.StatusOK, drafts)
+}

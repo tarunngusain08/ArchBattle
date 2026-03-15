@@ -1,28 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '../components/common/Button'
 import { ShareButton } from '../components/daily/ShareButton'
 import { TutorPanel } from '../components/match/TutorPanel'
 import { useMatch } from '../hooks/useMatch'
-import { useAuthStore } from '../stores/authStore'
+import { usePlayerStore } from '../stores/playerStore'
 import { useMatchStore } from '../stores/matchStore'
-import { useSocketStore } from '../stores/socketStore'
 
 export function ResultsPage() {
   const match = useMatch()
   const navigate = useNavigate()
-  const refreshUser = useAuthStore((state) => state.refreshUser)
+  const userId = usePlayerStore((state) => state.userId)
   const reset = useMatchStore((state) => state.reset)
-  const session = useAuthStore((state) => state.session)
-  const send = useSocketStore((state) => state.send)
   const [tutorOpen, setTutorOpen] = useState(false)
 
-  const playerChoices = session?.userId ? match.reveal?.playerChoices?.[session.userId] : undefined
-
-  useEffect(() => {
-    refreshUser()
-  }, [refreshUser])
+  const playerChoices = userId ? match.reveal?.playerChoices?.[userId] : undefined
 
   return (
     <div className="space-y-6">
@@ -36,10 +29,6 @@ export function ResultsPage() {
                 <span className="font-semibold">{standing.username}</span>
                 <span>{standing.score} pts</span>
               </div>
-              <p className="mt-2 text-sm text-slate-300">
-                ELO {standing.eloBefore} → {standing.eloAfter} ({standing.eloDelta >= 0 ? '+' : ''}
-                {standing.eloDelta})
-              </p>
             </div>
           ))}
         </div>
@@ -52,81 +41,61 @@ export function ResultsPage() {
           typeof match.learningSummary === 'object' &&
           (match.learningSummary.strength ||
             match.learningSummary.weakness ||
-            match.learningSummary.recommendation ||
-            match.learningSummary.elo_narrative) ? (
+            match.learningSummary.recommendation) ? (
             <div className="space-y-4">
-              {match.learningSummary.strength && (
+              {match.learningSummary.strength ? (
                 <div className="rounded-2xl border border-emerald-800/50 bg-emerald-950/30 p-4">
                   <p className="text-xs font-semibold uppercase tracking-wider text-emerald-400">Strength</p>
                   <p className="mt-2 text-slate-200">{String(match.learningSummary.strength)}</p>
                 </div>
-              )}
-              {match.learningSummary.weakness && (
+              ) : null}
+              {match.learningSummary.weakness ? (
                 <div className="rounded-2xl border border-amber-800/50 bg-amber-950/30 p-4">
                   <p className="text-xs font-semibold uppercase tracking-wider text-amber-400">Area to improve</p>
                   <p className="mt-2 text-slate-200">{String(match.learningSummary.weakness)}</p>
                 </div>
-              )}
-              {match.learningSummary.recommendation && (
+              ) : null}
+              {match.learningSummary.recommendation ? (
                 <div className="rounded-2xl border border-cyan-800/50 bg-cyan-950/30 p-4">
                   <p className="text-xs font-semibold uppercase tracking-wider text-cyan-400">Recommendation</p>
                   <p className="mt-2 text-slate-200">{String(match.learningSummary.recommendation)}</p>
                 </div>
-              )}
-              {match.learningSummary.elo_narrative && (
-                <div className="rounded-2xl border border-slate-700 bg-slate-900/70 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">ELO narrative</p>
-                  <p className="mt-2 text-slate-200">{String(match.learningSummary.elo_narrative)}</p>
-                </div>
-              )}
+              ) : null}
             </div>
           ) : (
-            <p className="text-sm text-slate-400">Generating your personalized learning summary…</p>
+            <p className="text-sm text-slate-400">No learning summary available.</p>
           )}
         </div>
         <div className="mt-5 flex gap-3">
           <Button
             onClick={() => {
               reset()
-              navigate('/queue')
+              navigate('/rooms')
             }}
           >
-            Queue again
+            Create new room
           </Button>
-          {match.matchId ? (
-            <Button
-              variant="secondary"
-              onClick={() => {
-                send('rematch_request', { matchId: match.matchId })
-                reset()
-                navigate('/queue')
-              }}
-            >
-              Rematch
-            </Button>
-          ) : null}
           <Button variant="secondary" onClick={() => setTutorOpen(true)}>
             Review with AI Tutor
           </Button>
           <ShareButton
             text={
-              match.learningSummary &&
-              typeof match.learningSummary === 'object'
+              match.learningSummary && typeof match.learningSummary === 'object'
                 ? [
                     match.learningSummary.strength && `Strength: ${match.learningSummary.strength}`,
                     match.learningSummary.weakness && `Area to improve: ${match.learningSummary.weakness}`,
                     match.learningSummary.recommendation && `Recommendation: ${match.learningSummary.recommendation}`,
-                    match.learningSummary.elo_narrative && `ELO: ${match.learningSummary.elo_narrative}`,
                   ]
                     .filter(Boolean)
                     .join('\n')
-                : ''
+                : match.standings.map((s) => `${s.username}: ${s.score} pts`).join('\n')
             }
           />
         </div>
       </section>
       {tutorOpen && (
         <TutorPanel
+          userId={userId}
           questionId={match.question?.id}
           questionPrompt={match.question?.prompt}
           officialReason={match.reveal?.rationale}

@@ -79,6 +79,7 @@ type Gateway struct {
 	streamReader    StreamStarter
 	upgrader        websocket.Upgrader
 	logger          *slog.Logger
+	allowedOrigins  []string
 
 	mu      sync.RWMutex
 	clients map[uuid.UUID]*client
@@ -91,23 +92,37 @@ type Gateway struct {
 	expectedPlayers map[uuid.UUID]int
 }
 
-func NewGateway(auth SessionAuthenticator, matchService MatchDriver, matchmaking MatchmakingDriver, questions QuestionLookup, events domainmatch.EventPublisher, streamReader StreamStarter, logger *slog.Logger) *Gateway {
+func NewGateway(auth SessionAuthenticator, matchService MatchDriver, matchmaking MatchmakingDriver, questions QuestionLookup, events domainmatch.EventPublisher, streamReader StreamStarter, allowedOrigins []string, logger *slog.Logger) *Gateway {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	origins := allowedOrigins
+	if origins == nil {
+		origins = []string{}
+	}
 	return &Gateway{
-		auth:         auth,
-		matchService: matchService,
-		matchmaking:  matchmaking,
-		questions:    questions,
-		events:       events,
-		streamReader: streamReader,
-		logger:       logger,
+		auth:           auth,
+		matchService:   matchService,
+		matchmaking:    matchmaking,
+		questions:     questions,
+		events:        events,
+		streamReader:  streamReader,
+		logger:        logger,
+		allowedOrigins: origins,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 			CheckOrigin: func(r *stdhttp.Request) bool {
-				return true
+				origin := r.Header.Get("Origin")
+				if origin == "" {
+					return true
+				}
+				for _, allowed := range origins {
+					if origin == allowed {
+						return true
+					}
+				}
+				return false
 			},
 		},
 		clients:         map[uuid.UUID]*client{},

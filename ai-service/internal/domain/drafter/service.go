@@ -49,7 +49,7 @@ func (s *Service) Generate(ctx context.Context, req Request) (*Draft, error) {
 		prompt += "\n\nSeed context: " + req.Seed
 	}
 	text, _, err := s.llm.Complete(ctx, shared.CompletionRequest{
-		Model:        "gpt-4o-mini",
+		Model:        "openai/gpt-4o-mini",
 		SystemPrompt: draftSystemPrompt,
 		Messages:     []shared.Message{{Role: "user", Content: prompt}},
 		Temperature:  0.2,

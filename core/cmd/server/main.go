@@ -95,7 +95,7 @@ func main() {
 	matchService := domainmatch.NewService(matchRepo, submissionRepo, matchStateStore, answerStore, eventPublisher, nil, questionService, userRepo, leaderboardService, aiClient, cfg.MatchStreamTTL)
 
 	matchFactory := outboundapp.NewMatchFactory(matchService, nil)
-	wsGateway := inboundws.NewGateway(authService, matchService, nil, questionService, eventPublisher, nil, logger)
+	wsGateway := inboundws.NewGateway(authService, matchService, nil, questionService, eventPublisher, nil, cfg.AllowedOrigins, logger)
 	streamReader := outboundredis.NewMatchStreamReader(eventPublisher, wsGateway, cfg.MatchBlockTimeout)
 	wsGateway.SetStreamReader(streamReader)
 	matchService.SetBroadcaster(wsGateway)

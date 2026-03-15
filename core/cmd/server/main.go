@@ -78,7 +78,7 @@ func main() {
 
 	aiClient := outboundai.NewClient(cfg.AIServiceURL, cfg.AIInternalSecret)
 
-	questionService := domainquestion.NewService(questionRepo, cfg.DisputeThreshold)
+	questionService := domainquestion.NewService(questionRepo, cfg.DisputeThreshold, aiClient)
 	dailyService := domaindaily.NewService(dailyRepo, dailyCacheStore, dailyLeaderboardStore, cfg.StreakGraceHours)
 	metricsTransitionRecorder := &metricsTransitionRecorder{metrics: metrics}
 	matchService := domainmatch.NewService(matchRepo, submissionRepo, matchStateStore, answerStore, eventPublisher, nil, questionService, cfg.MatchStreamTTL, metricsTransitionRecorder)

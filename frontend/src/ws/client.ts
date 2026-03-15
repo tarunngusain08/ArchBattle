@@ -1,6 +1,14 @@
 import type { SocketMessage } from './types'
 
-const DEFAULT_WS_URL = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080/ws'
+function getWsUrl(): string {
+	const env = import.meta.env.VITE_WS_URL
+	if (env) return env
+	if (typeof window !== 'undefined') {
+		const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+		return `${proto}//${window.location.host}/ws`
+	}
+	return 'ws://localhost:8080/ws'
+}
 
 export class ArchBattleSocketClient {
   private socket?: WebSocket
@@ -36,7 +44,7 @@ export class ArchBattleSocketClient {
     }
     this.intentionalClose = false
     const params = new URLSearchParams({ userId: this.userId, username: this.username })
-    this.socket = new WebSocket(`${DEFAULT_WS_URL}?${params.toString()}`)
+    this.socket = new WebSocket(`${getWsUrl()}?${params.toString()}`)
     this.socket.onopen = () => {
       this.reconnectAttempts = 0
       this.onStatusChange?.(true)

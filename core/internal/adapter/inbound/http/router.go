@@ -59,6 +59,17 @@ func NewRouter(params RouterParams) stdhttp.Handler {
 		router.Handle("/ws", params.WSGateway)
 	}
 
+	// Admin AI routes with 2min timeout (must be registered before 30s group to take precedence).
+	if params.Middleware != nil {
+		router.Group(func(r chi.Router) {
+			r.Use(params.Middleware.Authenticated)
+			r.Use(params.Middleware.AdminOnly)
+			r.Use(chimiddleware.Timeout(2 * time.Minute))
+			r.Post("/admin/ai/draft-question", params.AdminHandler.DraftQuestion)
+			r.Post("/admin/daily-challenge/summary", params.AdminHandler.GenerateDailySummary)
+		})
+	}
+
 	// All HTTP API routes share the 30s request timeout.
 	router.Group(func(r chi.Router) {
 		r.Use(chimiddleware.Timeout(30 * time.Second))
@@ -97,9 +108,8 @@ func NewRouter(params RouterParams) stdhttp.Handler {
 					admin.Post("/questions", params.AdminHandler.CreateQuestion)
 					admin.Patch("/questions/{id}", params.AdminHandler.UpdateQuestionStatus)
 					admin.Get("/disputes", params.AdminHandler.ListDisputes)
-					admin.Post("/ai/draft-question", params.AdminHandler.DraftQuestion)
 					admin.Post("/daily-challenge/publish", params.AdminHandler.PublishDaily)
-					admin.Post("/daily-challenge/summary", params.AdminHandler.GenerateDailySummary)
+					// AI draft and summary registered above with 2min timeout.
 				})
 			})
 		}

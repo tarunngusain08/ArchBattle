@@ -11,15 +11,22 @@ import (
 	"github.com/radhakrishna/archbattle/core/internal/domain/shared"
 )
 
-type Service struct {
-	queue   QueueStore
-	factory MatchFactory
-	notifier Notifier
-	rematch RematchLoader
+// MatchmakingWaitRecorder records matchmaking wait times for observability.
+// When nil, no recording is performed.
+type MatchmakingWaitRecorder interface {
+	ObserveMatchmakingWaitSeconds(seconds float64)
 }
 
-func NewService(queue QueueStore, factory MatchFactory, notifier Notifier, rematch RematchLoader) *Service {
-	return &Service{queue: queue, factory: factory, notifier: notifier, rematch: rematch}
+type Service struct {
+	queue      QueueStore
+	factory    MatchFactory
+	notifier   Notifier
+	rematch    RematchLoader
+	waitRecorder MatchmakingWaitRecorder
+}
+
+func NewService(queue QueueStore, factory MatchFactory, notifier Notifier, rematch RematchLoader, waitRecorder MatchmakingWaitRecorder) *Service {
+	return &Service{queue: queue, factory: factory, notifier: notifier, rematch: rematch, waitRecorder: waitRecorder}
 }
 
 func (s *Service) Enqueue(ctx context.Context, entry QueueEntry) error {
@@ -40,6 +47,9 @@ func (s *Service) CreateSoloMatch(ctx context.Context, userID uuid.UUID) (uuid.U
 	entry, err := s.queue.GetEntry(ctx, userID)
 	if err != nil || entry == nil {
 		return uuid.Nil, fmt.Errorf("queue entry not found: %w", err)
+	}
+	if s.waitRecorder != nil {
+		s.waitRecorder.ObserveMatchmakingWaitSeconds(time.Since(entry.JoinedAt).Seconds())
 	}
 	_ = s.queue.Dequeue(ctx, string(entry.Tier), string(entry.Topic), entry.UserID)
 	matchID, err := s.factory.CreateMatch(ctx, MatchRequest{Players: []QueueEntry{*entry}, Tier: entry.Tier, Topic: entry.Topic, Mode: entry.Mode, Solo: true})
@@ -147,6 +157,9 @@ func (s *Service) RunScanOnce(ctx context.Context) error {
 			}
 
 			if len(group) >= 2 {
+				if s.waitRecorder != nil {
+					s.waitRecorder.ObserveMatchmakingWaitSeconds(waited.Seconds())
+				}
 				matchID, err := s.factory.CreateMatch(ctx, MatchRequest{Players: group, Tier: entry.Tier, Topic: entry.Topic, Mode: entry.Mode})
 				if err != nil {
 					return fmt.Errorf("create match: %w", err)

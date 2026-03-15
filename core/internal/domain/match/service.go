@@ -445,10 +445,31 @@ func (s *Service) RunMatchLoop(ctx context.Context, matchID uuid.UUID, expectedP
 		logger.Error("update match status to active", "error", err)
 	}
 
-	seenQuestions := make([]uuid.UUID, 0, shared.QuestionsPerMatch)
-	pilotSelected := false
+	state, err := s.stateStore.GetMatchState(ctx, matchID)
+	if err != nil || state == nil {
+		logger.Error("get match state for question fetch", "error", err)
+		s.abandonMatch(context.Background(), matchID)
+		return
+	}
 
-	for qIdx := 0; qIdx < shared.QuestionsPerMatch; qIdx++ {
+	questions, err := s.questions.SelectQuestions(ctx, shared.QuestionsPerMatch, state.PlayerIDs, state.Tier, state.Topic, state.Mode, nil, true)
+	if err != nil {
+		logger.Error("select questions", "error", err)
+		s.abandonMatch(context.Background(), matchID)
+		return
+	}
+
+	questionIDs := make([]uuid.UUID, len(questions))
+	for i, q := range questions {
+		questionIDs[i] = q.ID
+	}
+	if err := s.matches.UpdateQuestionIDs(ctx, matchID, questionIDs); err != nil {
+		logger.Error("persist question ids", "error", err)
+		s.abandonMatch(context.Background(), matchID)
+		return
+	}
+
+	for qIdx := 0; qIdx < len(questions); qIdx++ {
 		select {
 		case <-ctx.Done():
 			s.abandonMatch(context.Background(), matchID)
@@ -461,15 +482,36 @@ func (s *Service) RunMatchLoop(ctx context.Context, matchID uuid.UUID, expectedP
 			return
 		}
 
-		question, err := s.StartNextQuestion(ctx, matchID, seenQuestions, pilotSelected)
-		if err != nil {
-			logger.Error("start next question", "error", err, "q_index", qIdx)
+		question := questions[qIdx]
+		loopState, loopErr := s.stateStore.GetMatchState(ctx, matchID)
+		if loopErr != nil || loopState == nil {
+			logger.Error("get match state", "error", loopErr)
 			s.abandonMatch(context.Background(), matchID)
 			return
 		}
-		seenQuestions = append(seenQuestions, question.ID)
-		if question.Status == "pilot" {
-			pilotSelected = true
+		loopState.State = StateActive
+		loopState.QuestionIndex = qIdx
+		loopState.CurrentQuestionID = question.ID
+		loopState.UpdatedAt = time.Now().UTC()
+		if err := s.stateStore.SetMatchState(ctx, matchID, loopState); err != nil {
+			logger.Error("update live state", "error", err)
+			s.abandonMatch(context.Background(), matchID)
+			return
+		}
+		if err := s.stateStore.SetCurrentQuestion(ctx, matchID, question.ID, qIdx); err != nil {
+			logger.Error("set current question", "error", err)
+			s.abandonMatch(context.Background(), matchID)
+			return
+		}
+		if err := s.publishAndBroadcast(ctx, matchID, &MatchEvent{
+			Type:      "question_broadcast",
+			MatchID:   matchID,
+			CreatedAt: loopState.UpdatedAt,
+			Payload:   map[string]any{"question": question.ToClientSnapshot(), "timer_s": questionTimerSeconds, "index": qIdx},
+		}); err != nil {
+			logger.Error("broadcast question", "error", err)
+			s.abandonMatch(context.Background(), matchID)
+			return
 		}
 
 		// Always wait the full 60 seconds so players can change answers.
@@ -528,10 +570,6 @@ func (s *Service) RunMatchLoop(ctx context.Context, matchID uuid.UUID, expectedP
 		case <-ctx.Done():
 			s.abandonMatch(context.Background(), matchID)
 			return
-		}
-
-		if qIdx == shared.QuestionsPerMatch-1 {
-			break
 		}
 	}
 

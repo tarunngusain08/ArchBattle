@@ -13,18 +13,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
-	domainauth "github.com/radhakrishna/archbattle/core/internal/domain/auth"
 	domainmatch "github.com/radhakrishna/archbattle/core/internal/domain/match"
 	domainquestion "github.com/radhakrishna/archbattle/core/internal/domain/question"
 	"github.com/radhakrishna/archbattle/core/internal/observability"
 )
-
-// SessionAuthenticator is the port the WS gateway uses to validate bearer tokens.
-// Using an interface (not *domainauth.Service) keeps the gateway decoupled from
-// the concrete service implementation.
-type SessionAuthenticator interface {
-	Authenticate(ctx context.Context, token string) (*domainauth.Session, error)
-}
 
 // MatchDriver is the port the WS gateway uses to drive match operations.
 // Using an interface (not *domainmatch.Service) keeps the gateway decoupled from
@@ -53,6 +45,8 @@ type client struct {
 	activeMatch uuid.UUID
 	messages    []time.Time
 	closed      atomic.Bool
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 func (c *client) trySend(msg []byte) {
@@ -72,7 +66,6 @@ type MatchmakingDriver interface {
 }
 
 type Gateway struct {
-	auth           SessionAuthenticator
 	matchService   MatchDriver
 	matchmaking    MatchmakingDriver
 	questions      QuestionLookup
@@ -92,9 +85,10 @@ type Gateway struct {
 	loopStarted     map[uuid.UUID]bool
 	loopCancels     map[uuid.UUID]context.CancelFunc
 	expectedPlayers map[uuid.UUID]int
+	roomOwners      map[uuid.UUID]uuid.UUID // matchID -> ownerID
 }
 
-func NewGateway(auth SessionAuthenticator, matchService MatchDriver, matchmaking MatchmakingDriver, questions QuestionLookup, events domainmatch.EventPublisher, streamReader StreamStarter, allowedOrigins []string, logger *slog.Logger) *Gateway {
+func NewGateway(matchService MatchDriver, matchmaking MatchmakingDriver, questions QuestionLookup, events domainmatch.EventPublisher, streamReader StreamStarter, allowedOrigins []string, logger *slog.Logger) *Gateway {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -103,7 +97,6 @@ func NewGateway(auth SessionAuthenticator, matchService MatchDriver, matchmaking
 		origins = []string{}
 	}
 	return &Gateway{
-		auth:           auth,
 		matchService:   matchService,
 		matchmaking:    matchmaking,
 		questions:     questions,
@@ -132,6 +125,7 @@ func NewGateway(auth SessionAuthenticator, matchService MatchDriver, matchmaking
 		loopStarted:     map[uuid.UUID]bool{},
 		loopCancels:     map[uuid.UUID]context.CancelFunc{},
 		expectedPlayers: map[uuid.UUID]int{},
+		roomOwners:      map[uuid.UUID]uuid.UUID{},
 	}
 }
 
@@ -155,6 +149,13 @@ func (g *Gateway) SetExpectedPlayers(matchID uuid.UUID, count int) {
 	g.expectedPlayers[matchID] = count
 }
 
+// SetRoomOwner records which user created the room so only they can start the battle.
+func (g *Gateway) SetRoomOwner(matchID, ownerID uuid.UUID) {
+	g.loopMu.Lock()
+	defer g.loopMu.Unlock()
+	g.roomOwners[matchID] = ownerID
+}
+
 // CancelMatchLoop stops a running game loop (e.g., when a match is abandoned externally).
 func (g *Gateway) CancelMatchLoop(matchID uuid.UUID) {
 	g.loopMu.Lock()
@@ -168,14 +169,15 @@ func (g *Gateway) CancelMatchLoop(matchID uuid.UUID) {
 }
 
 func (g *Gateway) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-	token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
-	if token == "" {
-		token = strings.TrimSpace(r.URL.Query().Get("token"))
-	}
-	session, err := g.auth.Authenticate(r.Context(), token)
-	if err != nil {
-		stdhttp.Error(w, "unauthorized", stdhttp.StatusUnauthorized)
+	userIDStr := strings.TrimSpace(r.URL.Query().Get("userId"))
+	username := strings.TrimSpace(r.URL.Query().Get("username"))
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil || userID == uuid.Nil {
+		stdhttp.Error(w, "unauthorized: userId required", stdhttp.StatusUnauthorized)
 		return
+	}
+	if username == "" {
+		username = "Player"
 	}
 
 	conn, err := g.upgrader.Upgrade(w, r, nil)
@@ -184,9 +186,10 @@ func (g *Gateway) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		return
 	}
 
-	c := &client{userID: session.UserID, username: session.Username, conn: conn, send: make(chan []byte, 64)}
+	ctx, cancel := context.WithCancel(context.Background())
+	c := &client{userID: userID, username: username, conn: conn, send: make(chan []byte, 64), ctx: ctx, cancel: cancel}
 	g.mu.Lock()
-	g.clients[session.UserID] = c
+	g.clients[userID] = c
 	g.mu.Unlock()
 	if g.metrics != nil {
 		g.metrics.WSConnectionsActive.Inc()
@@ -200,7 +203,7 @@ func (g *Gateway) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	})
 
 	go g.writePump(c)
-	go g.readPump(r.Context(), c)
+	go g.readPump(c)
 }
 
 func (g *Gateway) BroadcastToMatch(ctx context.Context, matchID uuid.UUID, event *domainmatch.MatchEvent) error {
@@ -259,6 +262,7 @@ func (g *Gateway) attachClientToMatch(c *client, matchID uuid.UUID) {
 }
 
 func (g *Gateway) removeClient(c *client) {
+	c.cancel()
 	g.mu.Lock()
 	c.closed.Store(true)
 	delete(g.clients, c.userID)

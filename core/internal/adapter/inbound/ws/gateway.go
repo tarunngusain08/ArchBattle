@@ -113,7 +113,7 @@ func NewGateway(matchService MatchDriver, matchmaking MatchmakingDriver, questio
 					return true
 				}
 				for _, allowed := range origins {
-					if origin == allowed {
+					if allowed == "*" || origin == allowed {
 						return true
 					}
 				}

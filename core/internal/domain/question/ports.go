@@ -20,6 +20,7 @@ type DraftRequest struct {
 // AIQuestionGenerator generates questions via AI. Used for hybrid question selection.
 type AIQuestionGenerator interface {
 	GenerateQuestion(ctx context.Context, topic, tier, mode string) (*Question, error)
+	GenerateQuestions(ctx context.Context, topic, tier, mode string, count int) ([]*Question, error)
 }
 
 type Repository interface {
@@ -30,6 +31,7 @@ type Repository interface {
 	UpdateRationale(ctx context.Context, id uuid.UUID, rationale string) error
 	SelectQuestion(ctx context.Context, seenBy []uuid.UUID, tier shared.Tier, topic shared.Topic, mode shared.Mode, since time.Time, exclude []uuid.UUID, excludePilot bool) (*Question, error)
 	SelectFallbackRandom(ctx context.Context, tier shared.Tier, mode shared.Mode) (*Question, error)
+	SelectFallbackRandomN(ctx context.Context, tier shared.Tier, mode shared.Mode, count int, exclude []uuid.UUID) ([]*Question, error)
 	IncrementDispute(ctx context.Context, id uuid.UUID) (*Question, error)
 	IncrementPilotAttempt(ctx context.Context, id uuid.UUID) (*Question, error)
 	ListUpcomingDaily(ctx context.Context, fromDate time.Time, days int) ([]Question, error)

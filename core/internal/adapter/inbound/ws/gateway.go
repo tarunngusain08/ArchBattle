@@ -23,7 +23,7 @@ import (
 // the concrete service implementation.
 type MatchDriver interface {
 	JoinMatch(ctx context.Context, matchID, userID uuid.UUID) error
-	SubmitAnswer(ctx context.Context, req domainmatch.SubmitAnswerRequest, correctAnswers []int) (*domainmatch.AnswerSubmission, int64, error)
+	RecordChoice(ctx context.Context, req domainmatch.RecordChoiceRequest) error
 	HandleDisconnect(ctx context.Context, matchID, userID uuid.UUID) error
 	SetConnected(ctx context.Context, matchID, userID uuid.UUID) error
 	RunMatchLoop(ctx context.Context, matchID uuid.UUID, expectedPlayers int)

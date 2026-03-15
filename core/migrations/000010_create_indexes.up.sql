@@ -1,0 +1,12 @@
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_tier ON users(tier);
+CREATE INDEX IF NOT EXISTS idx_questions_lookup ON questions(status, topic, difficulty_tier, mode);
+CREATE INDEX IF NOT EXISTS idx_questions_daily_eligible ON questions(daily_eligible) WHERE daily_eligible = TRUE;
+CREATE INDEX IF NOT EXISTS idx_matches_status_created_at ON matches(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_match_players_user_id ON match_players(user_id);
+CREATE INDEX IF NOT EXISTS idx_answer_submissions_match_user ON answer_submissions(match_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_answer_submissions_question ON answer_submissions(question_id);
+CREATE INDEX IF NOT EXISTS idx_daily_challenges_date ON daily_challenges(challenge_date DESC);
+CREATE INDEX IF NOT EXISTS idx_player_daily_challenges_completed ON player_daily_challenges(user_id, completed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_discussion_entries_date ON discussion_entries(challenge_date, question_number);
+CREATE INDEX IF NOT EXISTS idx_ai_tutor_sessions_user_created ON ai_tutor_sessions(user_id, created_at DESC);

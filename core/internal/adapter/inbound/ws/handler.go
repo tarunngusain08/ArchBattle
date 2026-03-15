@@ -188,11 +188,13 @@ func (g *Gateway) handleAnswerSubmit(ctx context.Context, c *client, raw json.Ra
 	if err != nil {
 		return err
 	}
-	question, err := g.questions.GetByID(ctx, questionID)
-	if err != nil {
-		return err
-	}
-	_, _, err = g.matchService.SubmitAnswer(ctx, domainmatch.SubmitAnswerRequest{MatchID: matchID, UserID: c.userID, QuestionID: questionID, Choices: payload.Choices, ServerReceivedAt: time.Now().UTC().UnixNano(), ElapsedSeconds: payload.ElapsedSeconds}, question.GetCorrectAnswers())
+	err = g.matchService.RecordChoice(ctx, domainmatch.RecordChoiceRequest{
+		MatchID:          matchID,
+		UserID:           c.userID,
+		QuestionID:       questionID,
+		Choices:          payload.Choices,
+		ServerReceivedAt: time.Now().UTC().UnixNano(),
+	})
 	if g.metrics != nil {
 		g.metrics.AnswerSubmitLatencyMillis.Observe(float64(time.Since(start).Milliseconds()))
 	}

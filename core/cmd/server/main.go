@@ -92,10 +92,12 @@ func main() {
 	questionService := domainquestion.NewService(questionRepo, cfg.DisputeThreshold)
 	leaderboardService := domainleaderboard.NewService(leaderboardStore)
 	dailyService := domaindaily.NewService(dailyRepo, dailyCacheStore, dailyLeaderboardStore, cfg.StreakGraceHours)
-	matchService := domainmatch.NewService(matchRepo, submissionRepo, matchStateStore, answerStore, eventPublisher, nil, questionService, userRepo, leaderboardService, aiClient, cfg.MatchStreamTTL)
+	metricsTransitionRecorder := &metricsTransitionRecorder{metrics: metrics}
+	matchService := domainmatch.NewService(matchRepo, submissionRepo, matchStateStore, answerStore, eventPublisher, nil, questionService, userRepo, leaderboardService, aiClient, cfg.MatchStreamTTL, metricsTransitionRecorder)
 
 	matchFactory := outboundapp.NewMatchFactory(matchService, nil)
 	wsGateway := inboundws.NewGateway(authService, matchService, nil, questionService, eventPublisher, nil, cfg.AllowedOrigins, logger)
+	wsGateway.SetMetrics(metrics)
 	streamReader := outboundredis.NewMatchStreamReader(eventPublisher, wsGateway, cfg.MatchBlockTimeout)
 	wsGateway.SetStreamReader(streamReader)
 	matchService.SetBroadcaster(wsGateway)
@@ -103,14 +105,15 @@ func main() {
 
 	matchFactory.SetLoopRegistrar(wsGateway)
 	rematchLoader := outboundapp.NewRematchLoader(matchRepo)
-	matchmakingService := domainmatchmaking.NewService(queueStore, matchFactory, wsGateway, rematchLoader)
+	metricsWaitRecorder := &metricsWaitRecorder{metrics: metrics}
+	matchmakingService := domainmatchmaking.NewService(queueStore, matchFactory, wsGateway, rematchLoader, metricsWaitRecorder)
 	wsGateway.SetMatchmaking(matchmakingService)
 
 	middleware := inboundhttp.NewMiddleware(authService, logger)
 	router := inboundhttp.NewRouter(inboundhttp.RouterParams{
 		Middleware:         middleware,
 		AuthHandler:        inboundhttp.NewAuthHandler(authService),
-		MatchHandler:       inboundhttp.NewMatchHandler(authService, matchmakingService, rateLimiter),
+		MatchHandler:       inboundhttp.NewMatchHandler(authService, matchmakingService, rateLimiter, cfg.FreeMatchLimitPerDay),
 		DailyHandler:       inboundhttp.NewDailyHandler(dailyService),
 		DiscussionHandler:  inboundhttp.NewDiscussionHandler(domaindiscussion.NewService(discussionRepo)),
 		QuestionHandler:    inboundhttp.NewQuestionHandler(questionService),
@@ -156,4 +159,20 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 	_ = server.Shutdown(shutdownCtx)
+}
+
+type metricsTransitionRecorder struct {
+	metrics *observability.Metrics
+}
+
+func (m *metricsTransitionRecorder) RecordMatchStateTransitionError() {
+	m.metrics.MatchStateTransitionError.Inc()
+}
+
+type metricsWaitRecorder struct {
+	metrics *observability.Metrics
+}
+
+func (m *metricsWaitRecorder) ObserveMatchmakingWaitSeconds(seconds float64) {
+	m.metrics.MatchmakingWaitSeconds.Observe(seconds)
 }

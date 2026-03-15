@@ -4,8 +4,10 @@ import { fetchDailyChallenge, submitDailyChallenge } from '../api/daily'
 import { Button } from '../components/common/Button'
 import { ShareButton } from '../components/daily/ShareButton'
 import { useDailyStore } from '../stores/dailyStore'
+import { usePlayerStore } from '../stores/playerStore'
 
 export function DailyChallengePage() {
+  const userId = usePlayerStore((state) => state.userId)
   const { challenge, answers, result, setChallenge, setAnswer, setResult } = useDailyStore()
 
   useEffect(() => {
@@ -46,10 +48,10 @@ export function DailyChallengePage() {
         <div className="mt-6 flex gap-3">
           <Button
             onClick={async () => {
-              if (!challenge) {
+              if (!challenge || !userId) {
                 return
               }
-              const response = await submitDailyChallenge({ date: challenge.challengeDate.slice(0, 10), answers, totalMillis: 32000 })
+              const response = await submitDailyChallenge({ userId, date: challenge.challengeDate.slice(0, 10), answers, totalMillis: 32000 })
               setResult(response)
             }}
           >

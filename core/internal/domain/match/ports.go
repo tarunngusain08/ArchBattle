@@ -59,6 +59,7 @@ type Broadcaster interface {
 
 type QuestionProvider interface {
 	SelectQuestion(ctx context.Context, seenBy []uuid.UUID, tier shared.Tier, topic shared.Topic, mode shared.Mode, exclude []uuid.UUID, excludePilot bool) (*shared.QuestionSnapshot, error)
+	SelectQuestions(ctx context.Context, count int, seenBy []uuid.UUID, tier shared.Tier, topic shared.Topic, mode shared.Mode, exclude []uuid.UUID, excludePilot bool) ([]*shared.QuestionSnapshot, error)
 	IncrementPilotAttempt(ctx context.Context, questionID uuid.UUID) error
 }
 

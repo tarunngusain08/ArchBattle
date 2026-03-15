@@ -1,0 +1,16 @@
+FROM golang:1.24-alpine AS builder
+WORKDIR /src
+COPY ai-service/go.mod ai-service/go.sum* ./ai-service/
+WORKDIR /src/ai-service
+RUN go mod download
+COPY ai-service/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/archbattle-ai ./cmd/server
+
+FROM alpine:3.21
+RUN adduser -D -g '' appuser
+WORKDIR /app
+COPY --from=builder /bin/archbattle-ai /app/archbattle-ai
+ENV AI_HTTP_PORT=8081
+EXPOSE 8081
+USER appuser
+ENTRYPOINT ["/app/archbattle-ai"]

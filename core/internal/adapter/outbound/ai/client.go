@@ -23,6 +23,13 @@ type draftQuestionPayload struct {
 	Seed  string `json:"seed"`
 }
 
+type draftQuestionsPayload struct {
+	Topic string `json:"topic"`
+	Tier  string `json:"tier"`
+	Mode  string `json:"mode"`
+	Count int    `json:"count"`
+}
+
 type Client struct {
 	baseURL        string
 	internalSecret string
@@ -30,7 +37,7 @@ type Client struct {
 }
 
 func NewClient(baseURL, internalSecret string) *Client {
-	return &Client{baseURL: strings.TrimRight(baseURL, "/"), internalSecret: internalSecret, http: &stdhttp.Client{Timeout: 20 * time.Second}}
+	return &Client{baseURL: strings.TrimRight(baseURL, "/"), internalSecret: internalSecret, http: &stdhttp.Client{Timeout: 45 * time.Second}}
 }
 
 func (c *Client) RequestLearningSummary(ctx context.Context, req domainmatch.LearningSummaryRequest) (*domainmatch.LearningSummary, error) {
@@ -45,6 +52,15 @@ func (c *Client) DraftQuestion(ctx context.Context, req domainquestion.DraftRequ
 	response := map[string]any{}
 	payload := draftQuestionPayload{Topic: req.Topic, Tier: req.Tier, Mode: req.Mode, Seed: req.Seed}
 	if err := c.postJSON(ctx, "/ai/draft-question", payload, &response); err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+func (c *Client) DraftQuestions(ctx context.Context, topic, tier, mode string, count int) ([]map[string]any, error) {
+	var response []map[string]any
+	payload := draftQuestionsPayload{Topic: topic, Tier: tier, Mode: mode, Count: count}
+	if err := c.postJSON(ctx, "/ai/draft-questions", payload, &response); err != nil {
 		return nil, err
 	}
 	return response, nil
@@ -102,9 +118,56 @@ func (c *Client) GenerateQuestion(ctx context.Context, topic, tier, mode string)
 	}, nil
 }
 
+func (c *Client) GenerateQuestions(ctx context.Context, topic, tier, mode string, count int) ([]*domainquestion.Question, error) {
+	responses, err := c.DraftQuestions(ctx, topic, tier, mode, count)
+	if err != nil {
+		return nil, err
+	}
+	tierParsed, err := shared.ParseTier(tier)
+	if err != nil {
+		tierParsed = shared.TierJunior
+	}
+	topicParsed := shared.NormalizeTopic(topic)
+	modeParsed := shared.Mode(mode)
+	if modeParsed != shared.ModeFFF {
+		modeParsed = shared.ModeFFF
+	}
+	questions := make([]*domainquestion.Question, 0, len(responses))
+	for _, resp := range responses {
+		data, err := json.Marshal(resp)
+		if err != nil {
+			continue
+		}
+		var d aiDraftResponse
+		if err := json.Unmarshal(data, &d); err != nil {
+			continue
+		}
+		if err := validateAIDraft(&d); err != nil {
+			continue
+		}
+		prompt := strings.TrimSpace(d.Scenario)
+		if d.Prompt != "" {
+			if prompt != "" {
+				prompt += "\n\n"
+			}
+			prompt += strings.TrimSpace(d.Prompt)
+		}
+		questions = append(questions, &domainquestion.Question{
+			Prompt:         prompt,
+			Options:        d.Options,
+			CorrectAnswers: d.CorrectAnswers,
+			Rationale:      d.Rationale,
+			Topic:          topicParsed,
+			DifficultyTier: tierParsed,
+			Mode:           modeParsed,
+		})
+	}
+	return questions, nil
+}
+
 func validateAIDraft(d *aiDraftResponse) error {
-	if len(d.Scenario) < 20 {
-		return fmt.Errorf("scenario too short (min 20 chars)")
+	if len(strings.Fields(d.Scenario)) < 50 {
+		return fmt.Errorf("scenario too short (min 50 words)")
 	}
 	if len(d.Prompt) < 10 {
 		return fmt.Errorf("prompt too short (min 10 chars)")

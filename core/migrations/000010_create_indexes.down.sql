@@ -1,0 +1,12 @@
+DROP INDEX IF EXISTS idx_ai_tutor_sessions_user_created;
+DROP INDEX IF EXISTS idx_discussion_entries_date;
+DROP INDEX IF EXISTS idx_player_daily_challenges_completed;
+DROP INDEX IF EXISTS idx_daily_challenges_date;
+DROP INDEX IF EXISTS idx_answer_submissions_question;
+DROP INDEX IF EXISTS idx_answer_submissions_match_user;
+DROP INDEX IF EXISTS idx_match_players_user_id;
+DROP INDEX IF EXISTS idx_matches_status_created_at;
+DROP INDEX IF EXISTS idx_questions_daily_eligible;
+DROP INDEX IF EXISTS idx_questions_lookup;
+DROP INDEX IF EXISTS idx_users_tier;
+DROP INDEX IF EXISTS idx_users_email;

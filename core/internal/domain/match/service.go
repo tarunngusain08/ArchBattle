@@ -314,7 +314,11 @@ func (s *Service) CompleteMatch(ctx context.Context, matchID uuid.UUID) ([]Playe
 
 	var summary *LearningSummary
 	if s.summaries != nil {
-		summary, _ = s.summaries.RequestLearningSummary(ctx, LearningSummaryRequest{MatchID: matchID, Topic: matchRecord.Topic, Tier: matchRecord.Tier, Standings: standings})
+		var err error
+		summary, err = s.summaries.RequestLearningSummary(ctx, LearningSummaryRequest{MatchID: matchID, Topic: matchRecord.Topic, Tier: matchRecord.Tier, Standings: standings})
+		if err != nil {
+			slog.Default().With("match_id", matchID).Warn("learning summary request failed", "error", err)
+		}
 	}
 	return standings, summary, nil
 }

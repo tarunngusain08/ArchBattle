@@ -12,6 +12,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     server: {
       port: 5173,
+      allowedHosts: mode === 'development' ? true : ['localhost'],
       proxy: {
         '/join': proxyTarget,
         '/rooms': proxyTarget,

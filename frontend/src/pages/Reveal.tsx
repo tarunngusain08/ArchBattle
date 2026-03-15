@@ -17,14 +17,12 @@ export function RevealPage() {
 
   const playerChoices = userId ? match.reveal?.playerChoices?.[userId] : undefined
 
-  // Navigate to /battle when the next question_broadcast arrives (status becomes 'active').
   useEffect(() => {
-    if (status === 'active') {
+    if (status === 'active' || status === 'leaderboard') {
       navigate('/battle')
     }
   }, [status, navigate])
 
-  // Navigate to /results when match ends.
   useEffect(() => {
     if (status === 'ended' || status === 'abandoned') {
       navigate('/results')

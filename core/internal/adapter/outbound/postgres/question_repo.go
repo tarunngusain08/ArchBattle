@@ -144,6 +144,36 @@ func (r *QuestionRepo) SelectFallbackRandom(ctx context.Context, tier shared.Tie
 	return scanFullQuestion(row)
 }
 
+func (r *QuestionRepo) SelectFallbackRandomN(ctx context.Context, tier shared.Tier, mode shared.Mode, count int, exclude []uuid.UUID) ([]*domainquestion.Question, error) {
+	if count <= 0 {
+		return nil, nil
+	}
+	if exclude == nil {
+		exclude = []uuid.UUID{}
+	}
+	rows, err := r.pool.Query(ctx, `
+        SELECT id, mode, topic, difficulty_tier, prompt, options, correct_answers, rationale, dispute_count, pilot_attempts, pilot_dispute_rate, is_active, daily_eligible, reviewed_by, second_reviewer, status, created_at
+        FROM questions
+        WHERE is_active = TRUE AND status IN ('live', 'staged')
+          AND difficulty_tier = $1 AND mode = $2
+          AND NOT (id = ANY($3))
+        ORDER BY RANDOM() LIMIT $4
+    `, tier, mode, exclude, count)
+	if err != nil {
+		return nil, fmt.Errorf("select fallback random n: %w", err)
+	}
+	defer rows.Close()
+	var questions []*domainquestion.Question
+	for rows.Next() {
+		q, err := scanFullQuestion(rows)
+		if err != nil {
+			return nil, err
+		}
+		questions = append(questions, q)
+	}
+	return questions, rows.Err()
+}
+
 func (r *QuestionRepo) IncrementDispute(ctx context.Context, id uuid.UUID) (*domainquestion.Question, error) {
 	_, err := r.pool.Exec(ctx, `UPDATE questions SET dispute_count = dispute_count + 1 WHERE id = $1`, id)
 	if err != nil {

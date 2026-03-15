@@ -12,6 +12,12 @@ export function LobbyPage() {
   const send = useSocketStore((state) => state.send)
 
   useEffect(() => {
+    if (match.matchId) {
+      send('join_match', { matchId: match.matchId })
+    }
+  }, [match.matchId, send])
+
+  useEffect(() => {
     if (match.status === 'active') {
       navigate('/battle')
     }
@@ -22,21 +28,25 @@ export function LobbyPage() {
   return (
     <div className="space-y-6">
       <LobbyCard
+        roomCode={match.roomCode}
         players={match.players.length > 0 ? match.players : ['Waiting for players...']}
         durationSeconds={countdown ?? 10}
         running={countdown != null && countdown > 0}
       />
-      <div className="flex gap-3">
-        <Button
-          onClick={() => {
-            if (match.matchId) {
-              send('join_match', { matchId: match.matchId })
-            }
-          }}
-        >
-          Sync lobby
-        </Button>
-        <Button variant="secondary" onClick={() => navigate('/battle')}>Go to battle screen</Button>
+      <div className="flex items-center gap-3">
+        {match.isOwner ? (
+          <Button
+            onClick={() => {
+              if (match.matchId) {
+                send('start_battle', { matchId: match.matchId })
+              }
+            }}
+          >
+            Start Battle
+          </Button>
+        ) : (
+          <p className="text-sm text-slate-400">Waiting for the host to start the battle...</p>
+        )}
       </div>
     </div>
   )

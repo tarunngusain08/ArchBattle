@@ -4,24 +4,25 @@ import react from '@vitejs/plugin-react'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
+  // Proxy target: used when frontend runs in Docker (VITE_PROXY_TARGET=http://core:8080).
+  // Client always uses relative URLs so fetch goes to same origin; proxy forwards to backend.
+  const proxyTarget = env.VITE_PROXY_TARGET || env.VITE_API_BASE_URL || 'http://localhost:8080'
+
   return {
     plugins: [react()],
     server: {
       port: 5173,
       proxy: {
-        '/auth': env.VITE_API_BASE_URL || 'http://localhost:8080',
-        '/match': env.VITE_API_BASE_URL || 'http://localhost:8080',
-        '/daily-challenge': env.VITE_API_BASE_URL || 'http://localhost:8080',
-        '/daily-submit': env.VITE_API_BASE_URL || 'http://localhost:8080',
-        '/daily-share-card': env.VITE_API_BASE_URL || 'http://localhost:8080',
-        '/questions': env.VITE_API_BASE_URL || 'http://localhost:8080',
-        '/leaderboard': env.VITE_API_BASE_URL || 'http://localhost:8080',
-        '/users': env.VITE_API_BASE_URL || 'http://localhost:8080',
-        '/admin': env.VITE_API_BASE_URL || 'http://localhost:8080',
-        '/health': env.VITE_API_BASE_URL || 'http://localhost:8080',
-        '/metrics': env.VITE_API_BASE_URL || 'http://localhost:8080',
+        '/join': proxyTarget,
+        '/rooms': proxyTarget,
+        '/daily-challenge': proxyTarget,
+        '/daily-submit': proxyTarget,
+        '/daily-share-card': proxyTarget,
+        '/health': proxyTarget,
+        '/metrics': proxyTarget,
+        '/api/tutor': proxyTarget,
         '/ws': {
-          target: env.VITE_API_BASE_URL || 'http://localhost:8080',
+          target: proxyTarget,
           ws: true,
         },
       },

@@ -27,6 +27,14 @@ go.work.sum
 # env file
 .env
 .env.example
+.env.local
+.commit_changes.sh
+
+# logs
+logs/
+
+# build
+build/
 
 # Editor/IDE
 # .idea/

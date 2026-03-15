@@ -16,9 +16,10 @@ type MatchRateLimiter interface {
 }
 
 type MatchHandler struct {
-	auth         *domainauth.Service
-	matchmaking  *domainmatchmaking.Service
-	rateLimiter  MatchRateLimiter
+	auth              *domainauth.Service
+	matchmaking       *domainmatchmaking.Service
+	rateLimiter       MatchRateLimiter
+	matchLimitPerDay  int
 }
 
 type queueRequest struct {
@@ -27,8 +28,8 @@ type queueRequest struct {
 	Mode  string `json:"mode"`
 }
 
-func NewMatchHandler(auth *domainauth.Service, matchmaking *domainmatchmaking.Service, rateLimiter MatchRateLimiter) *MatchHandler {
-	return &MatchHandler{auth: auth, matchmaking: matchmaking, rateLimiter: rateLimiter}
+func NewMatchHandler(auth *domainauth.Service, matchmaking *domainmatchmaking.Service, rateLimiter MatchRateLimiter, matchLimitPerDay int) *MatchHandler {
+	return &MatchHandler{auth: auth, matchmaking: matchmaking, rateLimiter: rateLimiter, matchLimitPerDay: matchLimitPerDay}
 }
 
 func (h *MatchHandler) Queue(w stdhttp.ResponseWriter, r *stdhttp.Request) {
@@ -60,14 +61,14 @@ func (h *MatchHandler) Queue(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 
 	key := fmt.Sprintf("ratelimit:match:%s:%s", userID.String(), time.Now().UTC().Format("2006-01-02"))
-	allowed, count, err := h.rateLimiter.Allow(r.Context(), key, 5, 24*time.Hour)
+	allowed, count, err := h.rateLimiter.Allow(r.Context(), key, h.matchLimitPerDay, 24*time.Hour)
 	if err != nil {
 		allowed = true // Fail open — do not block the player when Redis is down
 	}
 	if !allowed {
 		writeJSON(w, stdhttp.StatusTooManyRequests, map[string]any{
 			"error":       "daily match limit reached",
-			"limit":       5,
+			"limit":       h.matchLimitPerDay,
 			"used":        count,
 			"upgrade_url": "/pricing",
 		})

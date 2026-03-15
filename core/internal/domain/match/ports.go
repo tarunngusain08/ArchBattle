@@ -39,6 +39,9 @@ type AnswerStore interface {
 	IncrementSeq(ctx context.Context, matchID, qID uuid.UUID) (int64, error)
 	GetRank(ctx context.Context, matchID, qID, userID uuid.UUID) (int64, error)
 	GetTotalAnswered(ctx context.Context, matchID, qID uuid.UUID) (int64, error)
+	StoreLatestChoice(ctx context.Context, matchID, qID, userID uuid.UUID, choices []int) error
+	GetAllLatestChoices(ctx context.Context, matchID, qID uuid.UUID) (map[uuid.UUID][]int, error)
+	RecordFirstAnswerTime(ctx context.Context, matchID, qID, userID uuid.UUID, score float64) (bool, error)
 	ClearQuestion(ctx context.Context, matchID, qID uuid.UUID) error
 	SetQuestionTTL(ctx context.Context, matchID, qID uuid.UUID, ttl time.Duration) error
 }

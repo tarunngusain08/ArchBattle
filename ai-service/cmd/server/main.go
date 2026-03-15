@@ -43,7 +43,7 @@ func main() {
 	}
 	defer pgPool.Close()
 
-	llm := openai.NewClient(cfg.OpenAIAPIKey)
+	llm := openai.NewClient(cfg.OpenRouterAPIKey)
 	limiter := redisadapter.NewRateLimiter(redisClient)
 	sessionLogger := postgresadapter.NewSessionLogger(pgPool)
 

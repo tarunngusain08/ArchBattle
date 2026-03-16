@@ -20,6 +20,7 @@ interface MatchState {
   connected: boolean
   matchId?: string
   roomCode?: string
+  topic?: string
   isOwner: boolean
   status: 'idle' | 'queued' | 'lobby' | 'active' | 'revealing' | 'leaderboard' | 'ended' | 'abandoned'
   players: string[]
@@ -38,6 +39,7 @@ interface MatchState {
   setQueued: (matchId?: string) => void
   setMatchId: (matchId: string) => void
   setRoomCode: (roomCode: string) => void
+  setTopic: (topic: string) => void
   setIsOwner: (isOwner: boolean) => void
   applyEvent: (event: MatchEventEnvelope) => void
   clearPrompts: () => void
@@ -57,6 +59,7 @@ export const useMatchStore = create<MatchState>((set) => ({
   setQueued: (matchId) => set({ status: 'queued', matchId }),
   setMatchId: (matchId) => set({ matchId }),
   setRoomCode: (roomCode) => set({ roomCode }),
+  setTopic: (topic) => set({ topic }),
   setIsOwner: (isOwner) => set({ isOwner }),
   applyEvent: (event) =>
     set((state) => {
@@ -79,10 +82,12 @@ export const useMatchStore = create<MatchState>((set) => ({
             : Array.isArray(event.payload?.players)
               ? (event.payload.players as string[])
               : state.players
+          const topic = event.payload?.topic as string | undefined
           return {
             ...state,
             status: 'lobby',
             players: playerNames,
+            topic: topic ?? state.topic,
             messages: nextMessages,
           }
         }
@@ -187,6 +192,7 @@ export const useMatchStore = create<MatchState>((set) => ({
     connected: false,
     matchId: undefined,
     roomCode: undefined,
+    topic: undefined,
     isOwner: false,
     status: 'idle',
     players: [],

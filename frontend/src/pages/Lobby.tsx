@@ -30,6 +30,7 @@ export function LobbyPage() {
       <LobbyCard
         roomCode={match.roomCode}
         players={match.players.length > 0 ? match.players : ['Waiting for players...']}
+        topic={match.topic}
         durationSeconds={countdown ?? 10}
         running={countdown != null && countdown > 0}
       />

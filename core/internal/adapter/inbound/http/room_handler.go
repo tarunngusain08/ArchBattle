@@ -22,6 +22,7 @@ func NewRoomHandler(service *domainroom.Service) *RoomHandler {
 type createRoomRequest struct {
 	UserID   string `json:"userId"`
 	Username string `json:"username"`
+	Topic    string `json:"topic"`
 }
 
 type joinRoomRequest struct {
@@ -44,12 +45,12 @@ func (h *RoomHandler) CreateRoom(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	if username == "" {
 		username = "Player"
 	}
-	code, matchID, err := h.service.CreateRoom(r.Context(), userID, username)
+	code, matchID, chosenTopic, err := h.service.CreateRoom(r.Context(), userID, username, req.Topic)
 	if err != nil {
 		writeJSON(w, stdhttp.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, stdhttp.StatusCreated, map[string]any{"roomCode": code, "matchId": matchID.String()})
+	writeJSON(w, stdhttp.StatusCreated, map[string]any{"roomCode": code, "matchId": matchID.String(), "topic": string(chosenTopic)})
 }
 
 func (h *RoomHandler) JoinRoom(w stdhttp.ResponseWriter, r *stdhttp.Request) {

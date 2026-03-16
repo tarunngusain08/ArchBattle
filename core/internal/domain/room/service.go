@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -44,28 +45,34 @@ func NewService(store RoomStore, matches MatchCreator, adder PlayerAdder, status
 	return &Service{store: store, matches: matches, adder: adder, status: status, loop: loop}
 }
 
-func (s *Service) CreateRoom(ctx context.Context, userID uuid.UUID, username string) (code string, matchID uuid.UUID, err error) {
+func (s *Service) CreateRoom(ctx context.Context, userID uuid.UUID, username string, topic string) (code string, matchID uuid.UUID, chosenTopic shared.Topic, err error) {
 	code = generateRoomCode()
+	var t shared.Topic
+	if strings.TrimSpace(topic) == "" || strings.ToLower(strings.TrimSpace(topic)) == "random" {
+		t = pickRandomTopic()
+	} else {
+		t = shared.NormalizeTopic(topic)
+	}
 	players := []match.PlayerProfile{
 		{UserID: userID, Username: username, CurrentELO: 1000, MatchesPlayed: 0},
 	}
 	created, err := s.matches.CreateMatch(ctx, match.CreateMatchRequest{
 		Mode:    shared.ModeFFF,
-		Topic:   pickRandomTopic(),
+		Topic:   t,
 		Tier:    shared.TierSenior,
 		Players: players,
 	})
 	if err != nil {
-		return "", uuid.Nil, fmt.Errorf("create match: %w", err)
+		return "", uuid.Nil, "", fmt.Errorf("create match: %w", err)
 	}
 	if err := s.store.Set(ctx, code, created.ID, userID); err != nil {
-		return "", uuid.Nil, fmt.Errorf("store room code: %w", err)
+		return "", uuid.Nil, "", fmt.Errorf("store room code: %w", err)
 	}
 	if s.loop != nil {
 		s.loop.SetExpectedPlayers(created.ID, 2)
 		s.loop.SetRoomOwner(created.ID, userID)
 	}
-	return code, created.ID, nil
+	return code, created.ID, t, nil
 }
 
 func (s *Service) JoinRoom(ctx context.Context, code string, userID uuid.UUID, username string) (matchID uuid.UUID, err error) {
@@ -112,14 +119,22 @@ func generateRoomCode() string {
 	return string(b)
 }
 
+var battleTopics = []shared.Topic{
+	shared.Topic("caching"),
+	shared.Topic("queues"),
+	shared.Topic("storage"),
+	shared.Topic("databases"),
+	shared.Topic("rate-limiting"),
+	shared.Topic("observability"),
+	shared.Topic("microservices"),
+	shared.Topic("load-balancing"),
+	shared.Topic("event-driven"),
+	shared.Topic("security"),
+	shared.Topic("networking"),
+	shared.Topic("ci-cd"),
+}
+
 func pickRandomTopic() shared.Topic {
-	topics := []shared.Topic{
-		shared.Topic("caching"),
-		shared.Topic("queues"),
-		shared.Topic("storage"),
-		shared.Topic("rate-limiting"),
-		shared.Topic("observability"),
-	}
-	n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(topics))))
-	return topics[n.Int64()]
+	n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(battleTopics))))
+	return battleTopics[n.Int64()]
 }

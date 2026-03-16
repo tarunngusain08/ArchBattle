@@ -3,6 +3,7 @@ import { apiFetch } from './client'
 export interface CreateRoomResponse {
   roomCode: string
   matchId: string
+  topic: string
 }
 
 export interface JoinRoomResponse {
@@ -15,10 +16,10 @@ export interface RoomStatusResponse {
   status: string
 }
 
-export async function createRoom(userId: string, username: string): Promise<CreateRoomResponse> {
+export async function createRoom(userId: string, username: string, topic: string): Promise<CreateRoomResponse> {
   return apiFetch<CreateRoomResponse>('/rooms', {
     method: 'POST',
-    body: JSON.stringify({ userId, username }),
+    body: JSON.stringify({ userId, username, topic }),
   })
 }
 

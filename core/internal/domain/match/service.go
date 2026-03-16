@@ -136,7 +136,7 @@ func (s *Service) JoinMatch(ctx context.Context, matchID, userID uuid.UUID) erro
 	for i, p := range playerRows {
 		playerProfiles[i] = map[string]any{"id": p.UserID.String(), "username": p.Username}
 	}
-	return s.publishAndBroadcast(ctx, matchID, &MatchEvent{Type: "lobby_state", MatchID: matchID, CreatedAt: time.Now().UTC(), Payload: map[string]any{"players": updatedState.PlayerIDs, "player_profiles": playerProfiles, "joined": userID, "count": len(updatedState.PlayerIDs)}})
+	return s.publishAndBroadcast(ctx, matchID, &MatchEvent{Type: "lobby_state", MatchID: matchID, CreatedAt: time.Now().UTC(), Payload: map[string]any{"players": updatedState.PlayerIDs, "player_profiles": playerProfiles, "joined": userID, "count": len(updatedState.PlayerIDs), "topic": updatedState.Topic, "tier": updatedState.Tier, "mode": updatedState.Mode}})
 }
 
 func (s *Service) StartNextQuestion(ctx context.Context, matchID uuid.UUID, exclude []uuid.UUID, excludePilot bool) (*shared.QuestionSnapshot, error) {

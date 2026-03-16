@@ -26,7 +26,6 @@ go.work.sum
 
 # env file
 .env
-.env.example
 .env.local
 .commit_changes.sh
 
@@ -39,3 +38,5 @@ build/
 # Editor/IDE
 # .idea/
 # .vscode/
+
+.env.example
